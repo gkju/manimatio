@@ -5,3 +5,5 @@
 *.dylib
 *.pyd
 *.dll
+.direnv
+flake.lock
