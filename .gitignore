@@ -6,4 +6,3 @@
 *.pyd
 *.dll
 .direnv
-flake.lock
