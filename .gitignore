@@ -1,0 +1,7 @@
+/build/
+/vcpkg/
+/compile_commands.json
+*.so
+*.dylib
+*.pyd
+*.dll
