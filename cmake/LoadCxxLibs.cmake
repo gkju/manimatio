@@ -1,0 +1,12 @@
+function(load_cxxlibs base_dir)
+  if(NOT IS_DIRECTORY "${base_dir}")
+    return()
+  endif()
+
+  file(GLOB children RELATIVE "${base_dir}" "${base_dir}/*")
+  foreach(child ${children})
+    if(IS_DIRECTORY "${base_dir}/${child}")
+      add_subdirectory("${base_dir}/${child}" "${CMAKE_BINARY_DIR}/cxxlib_${child}")
+    endif()
+  endforeach()
+endfunction()

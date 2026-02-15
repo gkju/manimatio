@@ -1,0 +1,94 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 28, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "dev",
+      "displayName": "Dev (native toolchain, Ninja, vcpkg)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/dev",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "ENABLE_LTO": "OFF"
+      }
+    },
+    {
+      "name": "release",
+      "displayName": "Release (native toolchain, vcpkg)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "ENABLE_LTO": "OFF"
+      }
+    },
+    {
+      "name": "release-lto",
+      "displayName": "Release + cross-language ThinLTO (clang+lld recommended)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/release-lto",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "ENABLE_LTO": "ON",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++"
+      }
+    },
+    {
+      "name": "nix-dev",
+      "displayName": "Nix Dev",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/nix-dev",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake", 
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "ENABLE_LTO": "OFF",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++"
+      }
+    },
+    {
+      "name": "nix-release-lto",
+      "displayName": "Nix Release + cross-language ThinLTO",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/nix-release-lto",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake", 
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "ENABLE_LTO": "ON",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++"
+      }
+    },
+    {
+      "name": "docker-release-lto",
+      "displayName": "Docker Release + cross-language ThinLTO",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/docker-release-lto",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "ENABLE_LTO": "ON",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "dev", "configurePreset": "dev" },
+    { "name": "release", "configurePreset": "release" },
+    { "name": "release-lto", "configurePreset": "release-lto" },
+    { "name": "nix-dev", "configurePreset": "nix-dev" },
+    { "name": "nix-release-lto", "configurePreset": "nix-release-lto" },
+    { "name": "docker-release-lto", "configurePreset": "docker-release-lto" }
+  ]
+}

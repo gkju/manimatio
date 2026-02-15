@@ -27,6 +27,24 @@
               echo "Dev shell: clang=$(clang --version | head -n1)"
               echo "Dev shell: rustc=$(rustc -V)"
               echo "Use: cmake --preset nix-release-lto"
+              export CMAKE_EXPORT_COMPILE_COMMANDS=1
+
+              export VCPKG_ROOT="${pkgs.vcpkg}/share/vcpkg"
+              export VCPKG_DOWNLOADS="$PWD/.vcpkg/downloads"
+              export VCPKG_DEFAULT_BINARY_CACHE="$PWD/.vcpkg/bincache"
+
+              PRESET_BUILD_DIR="build/nix-release-lto" 
+  
+              if [ ! -f compile_commands.json ]; then
+                echo "First-time setup: Bootstrapping CMake with vcpkg for clangd..."
+                
+                cmake --preset nix-release-lto 
+                
+                if [ -f "$PRESET_BUILD_DIR/compile_commands.json" ]; then
+                  ln -sf "$PRESET_BUILD_DIR/compile_commands.json" .
+                  echo "compile_commands.json linked to project root!"
+                fi
+              fi
             '';
           };
         });
