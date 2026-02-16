@@ -30,5 +30,16 @@ int main() {
              "custom = {}, scaled = {}\n",
              t.get(), y.evaluate(), z.evaluate(), w.evaluate(),
              custom.evaluate(), scaled.evaluate());
-  return 0;
+  math::Param<float> mass = 5.5f;
+  math::Param<int> count = 10;
+
+  auto total_mass = math::apply(
+      [](float m, int c) { return static_cast<double>(m * c); }, mass, count);
+
+  for (int i = 0; i < 5; i++) {
+    std::print("mass = {}, count = {}, total_mass = {}\n", mass.evaluate(),
+               count.evaluate(), total_mass.evaluate());
+    mass++;
+    count++;
+  }
 }

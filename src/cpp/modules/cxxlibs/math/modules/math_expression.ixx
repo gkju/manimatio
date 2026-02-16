@@ -1,18 +1,29 @@
 module;
 
-#include <array>
 #include <cmath>
 #include <functional>
 #include <memory>
+#include <tuple>
+#include <type_traits>
 #include <utility>
+#include <vector>
 
 export module math:expression;
 
 export namespace math {
 
-template <typename T> class ComputationNode {
+enum class NodeType { Value, Param, BinOp, BuiltinOp, OpaqueFunc };
+
+class GraphNode {
 public:
-  virtual ~ComputationNode() = default;
+  virtual ~GraphNode() = default;
+  virtual std::vector<std::shared_ptr<const GraphNode>>
+  get_children() const = 0;
+  virtual NodeType get_node_type() const = 0;
+};
+
+template <typename T> class ComputationNode : public GraphNode {
+public:
   virtual T evaluate() const = 0;
 };
 
@@ -24,6 +35,11 @@ public:
   T evaluate() const override { return value; }
   void set(T val) { value = val; }
   T get() const { return value; }
+
+  std::vector<std::shared_ptr<const GraphNode>> get_children() const override {
+    return {};
+  }
+  NodeType get_node_type() const override { return NodeType::Value; }
 };
 
 template <typename T> class BinOpNode : public ComputationNode<T> {
@@ -58,22 +74,34 @@ public:
     }
     __builtin_unreachable();
   }
+
+  std::vector<std::shared_ptr<const GraphNode>> get_children() const override {
+    return {left, right};
+  }
+  NodeType get_node_type() const override { return NodeType::BinOp; }
 };
 
-template <typename T, typename F, std::size_t N>
-class FuncNode : public ComputationNode<T> {
+template <typename R, typename F, typename... Args>
+class FuncNode : public ComputationNode<R> {
   F func;
-  std::array<std::shared_ptr<ComputationNode<T>>, N> args;
+  std::tuple<std::shared_ptr<ComputationNode<Args>>...> args;
 
 public:
-  FuncNode(F f, std::array<std::shared_ptr<ComputationNode<T>>, N> a)
+  FuncNode(F f, std::tuple<std::shared_ptr<ComputationNode<Args>>...> a)
       : func(std::move(f)), args(std::move(a)) {}
 
-  T evaluate() const override {
-    return [&]<std::size_t... Is>(std::index_sequence<Is...>) {
-      return func(args[Is]->evaluate()...);
-    }(std::make_index_sequence<N>{});
+  R evaluate() const override {
+    return std::apply([&](const auto &...a) { return func(a->evaluate()...); },
+                      args);
   }
+
+  std::vector<std::shared_ptr<const GraphNode>> get_children() const override {
+    std::vector<std::shared_ptr<const GraphNode>> children;
+    std::apply([&](const auto &...a) { (children.push_back(a), ...); }, args);
+    return children;
+  }
+
+  NodeType get_node_type() const override { return NodeType::OpaqueFunc; }
 };
 
 template <typename T> class Expr {
@@ -85,6 +113,8 @@ template <typename T> class Expr {
   }
 
 public:
+  using value_type = T;
+
   Expr(std::shared_ptr<ComputationNode<T>> n) : node(std::move(n)) {}
   Expr(T value) : node(std::make_shared<ValueNode<T>>(value)) {}
   T evaluate() const { return node->evaluate(); }
@@ -152,15 +182,32 @@ public:
   T get() const { return val->get(); }
 };
 
-template <typename T, typename F, typename... Rest>
-  requires(std::convertible_to<Rest, Expr<T>> && ...)
-Expr<T> apply(F &&f, const Expr<T> &first, const Rest &...rest) {
-  constexpr auto N = 1 + sizeof...(Rest);
-  std::array<std::shared_ptr<ComputationNode<T>>, N> args{
-      first.get_node(), Expr<T>(rest).get_node()...};
+template <typename T>
+concept IsExpr = requires(T t) {
+  typename std::decay_t<T>::value_type;
+  t.get_node();
+};
 
-  return Expr<T>(std::make_shared<FuncNode<T, std::decay_t<F>, N>>(
-      std::forward<F>(f), std::move(args)));
+template <typename T> struct NodeTraits {
+  using value_type = std::decay_t<T>;
+  static auto get(const T &v) { return Expr<value_type>(v).get_node(); }
+};
+
+template <IsExpr T> struct NodeTraits<T> {
+  using value_type = typename std::decay_t<T>::value_type;
+  static auto get(const T &e) { return e.get_node(); }
+};
+
+template <typename F, typename... Args> auto apply(F &&f, const Args &...args) {
+  using R = std::invoke_result_t<F, typename NodeTraits<Args>::value_type...>;
+
+  auto child_tuple = std::make_tuple(NodeTraits<Args>::get(args)...);
+
+  auto node = std::make_shared<
+      FuncNode<R, std::decay_t<F>, typename NodeTraits<Args>::value_type...>>(
+      std::forward<F>(f), std::move(child_tuple));
+
+  return Expr<R>(node);
 }
 
 template <typename T> Expr<T> sin(const Expr<T> &e) {
