@@ -4,7 +4,6 @@ module;
 #include <cmath>
 #include <functional>
 #include <memory>
-#include <tuple>
 #include <utility>
 
 export module math:expression;
@@ -61,29 +60,21 @@ public:
   }
 };
 
-template <typename T, typename F, std::size_t... Is>
+template <typename T, typename F, std::size_t N>
 class FuncNode : public ComputationNode<T> {
   F func;
-  std::array<std::shared_ptr<ComputationNode<T>>, sizeof...(Is)> args;
+  std::array<std::shared_ptr<ComputationNode<T>>, N> args;
 
 public:
-  FuncNode(F f,
-           std::array<std::shared_ptr<ComputationNode<T>>, sizeof...(Is)> a)
+  FuncNode(F f, std::array<std::shared_ptr<ComputationNode<T>>, N> a)
       : func(std::move(f)), args(std::move(a)) {}
 
-  T evaluate() const override { return func(args[Is]->evaluate()...); }
+  T evaluate() const override {
+    return [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+      return func(args[Is]->evaluate()...);
+    }(std::make_index_sequence<N>{});
+  }
 };
-
-template <typename T> class Expr;
-
-template <typename T, typename F, std::size_t... Is>
-Expr<T>
-apply_impl(F &&f,
-           std::array<std::shared_ptr<ComputationNode<T>>, sizeof...(Is)> args,
-           std::index_sequence<Is...>) {
-  return Expr<T>(std::make_shared<FuncNode<T, std::decay_t<F>, Is...>>(
-      std::forward<F>(f), std::move(args)));
-}
 
 template <typename T> class Expr {
   std::shared_ptr<ComputationNode<T>> node;
@@ -97,6 +88,8 @@ public:
   Expr(std::shared_ptr<ComputationNode<T>> n) : node(std::move(n)) {}
   Expr(T value) : node(std::make_shared<ValueNode<T>>(value)) {}
   T evaluate() const { return node->evaluate(); }
+
+  std::shared_ptr<ComputationNode<T>> get_node() const { return node; }
 
   friend Expr operator+(const Expr &l, const Expr &r) {
     return binop(BinOpNode<T>::Op::Add, l, r);
@@ -129,7 +122,6 @@ public:
     val->set(value);
     return *this;
   }
-
   Param &operator+=(T value) {
     val->set(val->get() + value);
     return *this;
@@ -160,28 +152,15 @@ public:
   T get() const { return val->get(); }
 };
 
-template <typename T, typename F, typename... Exprs>
-  requires(std::convertible_to<Exprs, Expr<T>> && ...)
-Expr<T> apply(F &&f, const Exprs &...exprs) {
-  constexpr auto N = sizeof...(Exprs);
+template <typename T, typename F, typename... Rest>
+  requires(std::convertible_to<Rest, Expr<T>> && ...)
+Expr<T> apply(F &&f, const Expr<T> &first, const Rest &...rest) {
+  constexpr auto N = 1 + sizeof...(Rest);
   std::array<std::shared_ptr<ComputationNode<T>>, N> args{
-      Expr<T>(exprs).get_node()...};
-  return apply_impl<T>(std::forward<F>(f), std::move(args),
-                       std::make_index_sequence<N>{});
-}
+      first.get_node(), Expr<T>(rest).get_node()...};
 
-template <typename T, typename F> Expr<T> apply(F &&f, const Expr<T> &e) {
-  std::array<std::shared_ptr<ComputationNode<T>>, 1> args{e.get_node()};
-  return apply_impl<T>(std::forward<F>(f), std::move(args),
-                       std::make_index_sequence<1>{});
-}
-
-template <typename T, typename F>
-Expr<T> apply(F &&f, const Expr<T> &a, const Expr<T> &b) {
-  std::array<std::shared_ptr<ComputationNode<T>>, 2> args{a.get_node(),
-                                                          b.get_node()};
-  return apply_impl<T>(std::forward<F>(f), std::move(args),
-                       std::make_index_sequence<2>{});
+  return Expr<T>(std::make_shared<FuncNode<T, std::decay_t<F>, N>>(
+      std::forward<F>(f), std::move(args)));
 }
 
 template <typename T> Expr<T> sin(const Expr<T> &e) {
@@ -229,4 +208,5 @@ template <typename T> Expr<T> max(const Expr<T> &a, const Expr<T> &b) {
 template <typename T> Expr<T> operator-(const Expr<T> &e) {
   return apply([](T x) { return -x; }, e);
 }
+
 } // namespace math

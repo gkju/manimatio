@@ -15,21 +15,20 @@ int main() {
   }
   math::Param<float> t(0.5f);
 
-  // Standard math functions
   auto y = math::sin(t) + math::cos(t);
-  auto z = math::pow(t, math::Expr<float>(2.0f)); // t²
-  auto w = math::exp(-t * t);                     // gaussian
+  auto z = math::pow(t, math::Expr<float>(2.0f));
+  auto w = math::exp(-t * t);
 
-  // Custom lambda — any arity
   auto custom = math::apply([](float a, float b, float c) { return a * b + c; },
                             t, t + 1.0f, 3.0f);
 
-  // Even captures work
   float scale = 2.5f;
   auto scaled = math::apply([scale](float x) { return x * scale; }, t);
 
   t = 1.0f;
-  y.evaluate();      // sin(1) + cos(1)
-  custom.evaluate(); // 1 * 2 + 3 = 5
+  std::print("t = {}, sin(t) + cos(t) = {}, pow(t, 2) = {}, exp(-t*t) = {}, "
+             "custom = {}, scaled = {}\n",
+             t.get(), y.evaluate(), z.evaluate(), w.evaluate(),
+             custom.evaluate(), scaled.evaluate());
   return 0;
 }
