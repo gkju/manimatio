@@ -33,12 +33,13 @@
               export VCPKG_DOWNLOADS="$PWD/.vcpkg/downloads"
               export VCPKG_DEFAULT_BINARY_CACHE="$PWD/.vcpkg/bincache"
 
-              PRESET_BUILD_DIR="build/nix-release-lto" 
+              PRESET_BUILD_DIR="build/nix-dev" 
   
               if [ ! -f compile_commands.json ]; then
                 echo "First-time setup: Bootstrapping CMake with vcpkg for clangd..."
                 
-                cmake --preset nix-release-lto 
+                cmake --preset nix-dev
+                cmake --build --preset nix-dev || true
                 
                 if [ -f "$PRESET_BUILD_DIR/compile_commands.json" ]; then
                   ln -sf "$PRESET_BUILD_DIR/compile_commands.json" .

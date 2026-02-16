@@ -24,7 +24,7 @@ function(enable_cross_language_lto)
       target_link_options(${tgt} PRIVATE -flto=thin)
     else()
       target_compile_options(${tgt} PRIVATE -flto=thin)
-      target_link_options(${tgt} PRIVATE -flto=thin -fuse-ld=lld)
+      target_link_options(${tgt} PRIVATE -flto=thin -fuse-ld=lld -static-libstdc++ -static-libgcc)
     endif()
   endforeach()
 

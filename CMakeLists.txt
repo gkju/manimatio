@@ -79,3 +79,11 @@ if(ENABLE_LTO)
   include(${CMAKE_SOURCE_DIR}/cmake/EnableCrossLangLTO.cmake)
   enable_cross_language_lto(TARGETS core app RUST_TARGET manimatio_rust_lib)
 endif()
+
+# -----------------------
+# Snippet runner (build with: cmake --build <preset> --target snippets)
+# -----------------------
+get_property(_snippets GLOBAL PROPERTY ALL_SNIPPET_TARGETS)
+if(_snippets)
+  add_custom_target(snippets DEPENDS ${_snippets})
+endif()
