@@ -1,4 +1,10 @@
 cmake_minimum_required(VERSION 3.28)
+
+find_program(CLANG_SCAN_DEPS_PATH clang-scan-deps)
+if(CLANG_SCAN_DEPS_PATH)
+    set(CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS ${CLANG_SCAN_DEPS_PATH})
+endif()
+
 project(manimatio LANGUAGES C CXX)
 
 option(ENABLE_LTO "Enable cross-language link-time optimization (LTO)" OFF)
@@ -29,6 +35,14 @@ corrosion_add_cxxbridge(rust_bridge
   REGEN_TARGET regen_manimatio_rust_lib_cxxbridge
   FILES lib.rs
 )
+
+# -----------------------
+# Catch2 setup
+# -----------------------
+enable_testing()
+include(${CMAKE_SOURCE_DIR}/cmake/SetupCatch.cmake)
+setup_catch()
+
 # -----------------------
 # C++ sources
 # -----------------------
@@ -86,4 +100,9 @@ endif()
 get_property(_snippets GLOBAL PROPERTY ALL_SNIPPET_TARGETS)
 if(_snippets)
   add_custom_target(snippets DEPENDS ${_snippets})
+endif()
+
+get_property(_tests GLOBAL PROPERTY ALL_TEST_TARGETS)
+if(_tests)
+  add_custom_target(tests DEPENDS ${_tests})
 endif()

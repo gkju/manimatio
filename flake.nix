@@ -12,15 +12,17 @@
     in {
       devShells = forAllSystems (system:
         let pkgs = import nixpkgs { inherit system; };
+        stdenv = pkgs.clangStdenv;
         in {
           default = pkgs.mkShell {
             packages = with pkgs; [
               cmake ninja
-              clang lld llvm clang-tools
+              stdenv.cc lld llvm clang-tools
               rustc cargo
               git pkg-config
               python3
               vcpkg
+              just
             ];
 
             shellHook = ''
