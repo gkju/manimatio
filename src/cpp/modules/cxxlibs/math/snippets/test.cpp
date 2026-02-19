@@ -32,7 +32,7 @@ int main() {
              custom.evaluate(), scaled.evaluate());
   math::Param<float> mass = 5.5f;
   math::Param<int> count = 10;
-
+  // Heterogenous reduction with custom callable
   auto total_mass = math::apply(
       [](float m, int c) { return static_cast<double>(m * c); }, mass, count);
 
