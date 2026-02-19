@@ -13,7 +13,7 @@ export module math:expression;
 
 export namespace math {
 
-enum class NodeType { Constant, Param, Var, BinOp, BuiltinOp, OpaqueFunc };
+enum class NodeType { Constant, Param, Var, BinOp, IntrinsicOp, OpaqueFunc };
 
 class GraphNode {
 protected:
@@ -148,6 +148,103 @@ public:
     return {left, right};
   }
   NodeType get_node_type() const override { return NodeType::BinOp; }
+};
+
+enum class IntrinsicOpType {
+  Sin,
+  Cos,
+  Tan,
+  Asin,
+  Acos,
+  Atan,
+  Atan2,
+  Exp,
+  Log,
+  Sqrt,
+  Abs,
+  Pow,
+  Min,
+  Max,
+  Negate
+};
+
+template <typename T> class BuiltinNode : public ComputationNode<T> {
+  IntrinsicOpType op_type;
+  std::vector<std::shared_ptr<ComputationNode<T>>> args;
+
+public:
+  BuiltinNode(IntrinsicOpType op,
+              std::vector<std::shared_ptr<ComputationNode<T>>> a)
+      : op_type(op), args(std::move(a)) {
+    for (const auto &arg : args) {
+      arg->add_dependent(this);
+    }
+  }
+
+  ~BuiltinNode() override {
+    for (const auto &arg : args) {
+      arg->remove_dependent(this);
+    }
+  }
+
+  IntrinsicOpType get_op_type() const { return op_type; }
+  const std::vector<std::shared_ptr<ComputationNode<T>>> &get_args() const {
+    return args;
+  }
+
+  T compute() const override {
+    if (args.size() == 1) {
+      T x = args[0]->evaluate();
+      switch (op_type) {
+      case IntrinsicOpType::Sin:
+        return std::sin(x);
+      case IntrinsicOpType::Cos:
+        return std::cos(x);
+      case IntrinsicOpType::Tan:
+        return std::tan(x);
+      case IntrinsicOpType::Asin:
+        return std::asin(x);
+      case IntrinsicOpType::Acos:
+        return std::acos(x);
+      case IntrinsicOpType::Atan:
+        return std::atan(x);
+      case IntrinsicOpType::Exp:
+        return std::exp(x);
+      case IntrinsicOpType::Log:
+        return std::log(x);
+      case IntrinsicOpType::Sqrt:
+        return std::sqrt(x);
+      case IntrinsicOpType::Abs:
+        return std::abs(x);
+      case IntrinsicOpType::Negate:
+        return -x;
+      default:
+        break;
+      }
+    } else if (args.size() == 2) {
+      T x = args[0]->evaluate();
+      T y = args[1]->evaluate();
+      switch (op_type) {
+      case IntrinsicOpType::Atan2:
+        return std::atan2(x, y);
+      case IntrinsicOpType::Pow:
+        return std::pow(x, y);
+      case IntrinsicOpType::Min:
+        return std::min(x, y);
+      case IntrinsicOpType::Max:
+        return std::max(x, y);
+      default:
+        break;
+      }
+    }
+    return T{}; // Fallback
+  }
+
+  std::vector<std::shared_ptr<const GraphNode>> get_children() const override {
+    return {args.begin(), args.end()};
+  }
+
+  NodeType get_node_type() const override { return NodeType::IntrinsicOp; }
 };
 
 template <typename R, typename F, typename... Args>
@@ -296,51 +393,64 @@ template <typename F, typename... Args> auto apply(F &&f, const Args &...args) {
 
   return Expr<R>(node);
 }
+template <typename T>
+Expr<T> make_unary_builtin(IntrinsicOpType op, const Expr<T> &e) {
+  return Expr<T>(std::make_shared<BuiltinNode<T>>(
+      op, std::vector<std::shared_ptr<ComputationNode<T>>>{e.get_node()}));
+}
+
+template <typename T>
+Expr<T> make_binary_builtin(IntrinsicOpType op, const Expr<T> &a,
+                            const Expr<T> &b) {
+  return Expr<T>(std::make_shared<BuiltinNode<T>>(
+      op, std::vector<std::shared_ptr<ComputationNode<T>>>{a.get_node(),
+                                                           b.get_node()}));
+}
 
 template <typename T> Expr<T> sin(const Expr<T> &e) {
-  return apply([](T x) { return std::sin(x); }, e);
+  return make_unary_builtin(IntrinsicOpType::Sin, e);
 }
 template <typename T> Expr<T> cos(const Expr<T> &e) {
-  return apply([](T x) { return std::cos(x); }, e);
+  return make_unary_builtin(IntrinsicOpType::Cos, e);
 }
 template <typename T> Expr<T> tan(const Expr<T> &e) {
-  return apply([](T x) { return std::tan(x); }, e);
-}
-template <typename T> Expr<T> asin(const Expr<T> &e) {
-  return apply([](T x) { return std::asin(x); }, e);
-}
-template <typename T> Expr<T> acos(const Expr<T> &e) {
-  return apply([](T x) { return std::acos(x); }, e);
-}
-template <typename T> Expr<T> atan(const Expr<T> &e) {
-  return apply([](T x) { return std::atan(x); }, e);
+  return make_unary_builtin(IntrinsicOpType::Tan, e);
 }
 template <typename T> Expr<T> atan2(const Expr<T> &a, const Expr<T> &b) {
-  return apply([](T y, T x) { return std::atan2(y, x); }, a, b);
+  return make_binary_builtin(IntrinsicOpType::Atan2, a, b);
 }
-template <typename T> Expr<T> exp(const Expr<T> &e) {
-  return apply([](T x) { return std::exp(x); }, e);
-}
-template <typename T> Expr<T> log(const Expr<T> &e) {
-  return apply([](T x) { return std::log(x); }, e);
-}
-template <typename T> Expr<T> sqrt(const Expr<T> &e) {
-  return apply([](T x) { return std::sqrt(x); }, e);
-}
-template <typename T> Expr<T> abs(const Expr<T> &e) {
-  return apply([](T x) { return std::abs(x); }, e);
-}
-template <typename T> Expr<T> pow(const Expr<T> &base, const Expr<T> &exp) {
-  return apply([](T b, T e) { return std::pow(b, e); }, base, exp);
-}
-template <typename T> Expr<T> min(const Expr<T> &a, const Expr<T> &b) {
-  return apply([](T x, T y) { return std::min(x, y); }, a, b);
-}
-template <typename T> Expr<T> max(const Expr<T> &a, const Expr<T> &b) {
-  return apply([](T x, T y) { return std::max(x, y); }, a, b);
+template <typename T> Expr<T> pow(const Expr<T> &a, const Expr<T> &b) {
+  return make_binary_builtin(IntrinsicOpType::Pow, a, b);
 }
 template <typename T> Expr<T> operator-(const Expr<T> &e) {
-  return apply([](T x) { return -x; }, e);
+  return make_unary_builtin(IntrinsicOpType::Negate, e);
+}
+template <typename T> Expr<T> asin(const Expr<T> &e) {
+  return make_unary_builtin(IntrinsicOpType::Asin, e);
+}
+template <typename T> Expr<T> acos(const Expr<T> &e) {
+  return make_unary_builtin(IntrinsicOpType::Acos, e);
+}
+template <typename T> Expr<T> atan(const Expr<T> &e) {
+  return make_unary_builtin(IntrinsicOpType::Atan, e);
+}
+template <typename T> Expr<T> exp(const Expr<T> &e) {
+  return make_unary_builtin(IntrinsicOpType::Exp, e);
+}
+template <typename T> Expr<T> log(const Expr<T> &e) {
+  return make_unary_builtin(IntrinsicOpType::Log, e);
+}
+template <typename T> Expr<T> sqrt(const Expr<T> &e) {
+  return make_unary_builtin(IntrinsicOpType::Sqrt, e);
+}
+template <typename T> Expr<T> abs(const Expr<T> &e) {
+  return make_unary_builtin(IntrinsicOpType::Abs, e);
+}
+template <typename T> Expr<T> min(const Expr<T> &a, const Expr<T> &b) {
+  return make_binary_builtin(IntrinsicOpType::Min, a, b);
+}
+template <typename T> Expr<T> max(const Expr<T> &a, const Expr<T> &b) {
+  return make_binary_builtin(IntrinsicOpType::Max, a, b);
 }
 
 } // namespace math
