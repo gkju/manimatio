@@ -41,10 +41,10 @@ jobs:
         run: nix develop --command cmake --preset nix-dev 
 
       - name: Run unit tests
-        run: nix develop --command just test --output-junit test-results.xml
+        run: nix develop --command just test-ci
 
       - name: Publish Test Results
         uses: EnricoMi/publish-unit-test-result-action@v2
         if: always()
         with:
-          files: build/nix-dev/test-results.xml
+          files: build/nix-dev/test-results/*.xml

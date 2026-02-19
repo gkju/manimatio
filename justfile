@@ -14,7 +14,15 @@ build:
 test *args:
     cmake --build --preset {{preset}} --target tests
     ctest --test-dir {{build_dir}} --output-on-failure {{args}}
-
+    
+test-ci:
+    cmake --build --preset {{preset}} --target tests
+    mkdir -p {{build_dir}}/test-results
+    for test_bin in {{build_dir}}/tests/test_*; do \
+        if [ -x "$test_bin" ]; then \
+            "$test_bin" --reporter console --reporter junit::out={{build_dir}}/test-results/$(basename "$test_bin").xml || true; \
+        fi; \
+    done
 # Build and run a specific module's test (e.g., `just test-mod math`)
 test-mod module:
     cmake --build --preset {{preset}} --target test_cxxlib_{{module}}
