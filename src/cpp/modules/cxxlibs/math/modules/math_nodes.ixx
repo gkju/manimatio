@@ -80,33 +80,26 @@ enum class IntrinsicOpType {
   Negate
 };
 
-template <typename T> class IntrinsicNode : public ComputationNode<T> {
+template <typename R, typename... Args> 
+class IntrinsicNode : public ComputationNode<R> {
   IntrinsicOpType op_type;
-  std::vector<std::shared_ptr<ComputationNode<T>>> args;
+  std::tuple<std::shared_ptr<ComputationNode<Args>>...> args;
 
 public:
-  IntrinsicNode(IntrinsicOpType op,
-                std::vector<std::shared_ptr<ComputationNode<T>>> a)
-      : op_type(op), args(std::move(a)) {
-    for (const auto &arg : args) {
-      arg->add_dependent(this);
-    }
+  IntrinsicNode(IntrinsicOpType op, std::shared_ptr<ComputationNode<Args>>... a)
+      : op_type(op), args(std::move(a)...) {
+    std::apply([this](auto &...child) { (child->add_dependent(this), ...); }, args);
   }
 
   ~IntrinsicNode() override {
-    for (const auto &arg : args) {
-      arg->remove_dependent(this);
-    }
+    std::apply([this](auto &...child) { (child->remove_dependent(this), ...); }, args);
   }
 
   IntrinsicOpType get_op_type() const { return op_type; }
-  const std::vector<std::shared_ptr<ComputationNode<T>>> &get_args() const {
-    return args;
-  }
 
-  T compute() const override {
-    if (args.size() == 1) {
-      T x = args[0]->evaluate();
+  R compute() const override {
+    if constexpr (sizeof...(Args) == 1) {
+      auto x = std::get<0>(args)->evaluate();
       switch (op_type) {
       case IntrinsicOpType::Sin:
         return std::sin(x);
@@ -133,9 +126,9 @@ public:
       default:
         break;
       }
-    } else if (args.size() == 2) {
-      T x = args[0]->evaluate();
-      T y = args[1]->evaluate();
+    } else if constexpr (sizeof...(Args) == 2) {
+      auto x = std::get<0>(args)->evaluate();
+      auto y = std::get<1>(args)->evaluate();
       switch (op_type) {
       case IntrinsicOpType::Add:
         return x + y;
@@ -157,11 +150,13 @@ public:
         break;
       }
     }
-    return T{}; // Fallback
+    return R{}; // Fallback
   }
 
   std::vector<std::shared_ptr<const GraphNode>> get_children() const override {
-    return {args.begin(), args.end()};
+    std::vector<std::shared_ptr<const GraphNode>> children;
+    std::apply([&](const auto &...a) { (children.push_back(a), ...); }, args);
+    return children;
   }
 
   NodeType get_node_type() const override { return NodeType::IntrinsicOp; }

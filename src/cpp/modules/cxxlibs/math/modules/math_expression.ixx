@@ -18,16 +18,13 @@ export namespace math {
 template <typename T> class Expr;
 template <typename T>
 Expr<T> make_unary_builtin(IntrinsicOpType op, const Expr<T> &e) {
-  return Expr<T>(std::make_shared<IntrinsicNode<T>>(
-      op, std::vector<std::shared_ptr<ComputationNode<T>>>{e.get_node()}));
+  return Expr<T>(std::make_shared<IntrinsicNode<T, T>>(op, e.get_node()));
 }
 
-template <typename T>
-Expr<T> make_binary_builtin(IntrinsicOpType op, const Expr<T> &a,
-                            const Expr<T> &b) {
-  return Expr<T>(std::make_shared<IntrinsicNode<T>>(
-      op, std::vector<std::shared_ptr<ComputationNode<T>>>{a.get_node(),
-                                                           b.get_node()}));
+template <typename T1, typename T2>
+auto make_binary_builtin(IntrinsicOpType op, const Expr<T1> &a, const Expr<T2> &b) {
+  using R = decltype(std::declval<T1>() * std::declval<T2>());
+  return Expr<R>(std::make_shared<IntrinsicNode<R, T1, T2>>(op, a.get_node(), b.get_node()));
 }
 
 template <typename T> class Expr {
