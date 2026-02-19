@@ -35,11 +35,8 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-vcpkg-
 
-      - name: Run Tests
-        run: |
-          ctest --test-dir build/nix-dev \
-                --output-on-failure \
-                --output-junit test-results.xml
+      - name: Run unit tests
+        run: nix develop --command just test --output-junit test-results.xml
 
       - name: Publish Test Results
         uses: EnricoMi/publish-unit-test-result-action@v2

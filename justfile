@@ -11,9 +11,9 @@ build:
     cmake --build --preset {{preset}}
 
 # Build and run all unit tests
-test:
+test *args:
     cmake --build --preset {{preset}} --target tests
-    ctest --test-dir {{build_dir}} --output-on-failure
+    ctest --test-dir {{build_dir}} --output-on-failure {{args}}
 
 # Build and run a specific module's test (e.g., `just test-mod math`)
 test-mod module:

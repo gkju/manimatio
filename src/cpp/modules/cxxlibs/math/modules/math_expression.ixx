@@ -55,6 +55,16 @@ public:
   friend Expr operator/(const Expr &l, const Expr &r) {
     return make_binary_builtin(IntrinsicOpType::Div, l, r);
   }
+
+  template <typename U>
+  friend auto operator*(const Expr &l, const Expr<U> &r) {
+    return make_binary_builtin(IntrinsicOpType::Mul, l, r);
+  }
+
+  template <typename U>
+  friend auto operator+(const Expr &l, const Expr<U> &r) {
+    return make_binary_builtin(IntrinsicOpType::Add, l, r);
+  }
 };
 
 template <typename T> class Param : public Expr<T> {
