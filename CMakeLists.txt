@@ -5,7 +5,11 @@ if(CLANG_SCAN_DEPS_PATH)
     set(CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS ${CLANG_SCAN_DEPS_PATH})
 endif()
 
+# -----------------------
+# Project setup
+# -----------------------
 project(manimatio LANGUAGES C CXX)
+find_package(msdfgen CONFIG REQUIRED)
 
 option(ENABLE_LTO "Enable cross-language link-time optimization (LTO)" OFF)
 option(ENABLE_CUDA_EXT "Enable CUDA extension" OFF)
@@ -52,7 +56,10 @@ add_library(core STATIC
 target_link_libraries(core PUBLIC rust_bridge)
 
 add_executable(app src/cpp/main.cpp)
-target_link_libraries(app PRIVATE core)
+target_link_libraries(app PRIVATE 
+  core
+  msdfgen::msdfgen
+)
 
 # -----------------------
 # CXX modules

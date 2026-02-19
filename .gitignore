@@ -6,3 +6,4 @@
 *.pyd
 *.dll
 .direnv/
+.vcpkg/

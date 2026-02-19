@@ -14,40 +14,47 @@
         let pkgs = import nixpkgs { inherit system; };
         stdenv = pkgs.clangStdenv;
         in {
-          default = pkgs.mkShell {
+          default = pkgs.mkShell.override { inherit stdenv; } {
             packages = with pkgs; [
               cmake ninja
               stdenv.cc lld llvm clang-tools
               rustc cargo
               git pkg-config
               python3
-              vcpkg
               just
+
+              autoconf automake libtool autoconf-archive m4 
+              gperf flex bison gettext
+
+              util-linux
+              mesa libGL
+              libx11 libxcursor libxinerama libxi
             ];
 
             shellHook = ''
-              echo "Dev shell: clang=$(clang --version | head -n1)"
-              echo "Dev shell: rustc=$(rustc -V)"
-              echo "Use: cmake --preset nix-release-lto"
-              export CMAKE_EXPORT_COMPILE_COMMANDS=1
-
-              export VCPKG_ROOT="${pkgs.vcpkg}/share/vcpkg"
+              export VCPKG_ROOT="$PWD/vcpkg"
               export VCPKG_DOWNLOADS="$PWD/.vcpkg/downloads"
               export VCPKG_DEFAULT_BINARY_CACHE="$PWD/.vcpkg/bincache"
+              export PATH=$VCPKG_ROOT:$PATH
+              
+              export VCPKG_FORCE_SYSTEM_BINARIES=1
+              export STDCXX_PATH="${pkgs.stdenv.cc.cc.lib}/lib"
+              export LD_LIBRARY_PATH="$STDCXX_PATH:$LD_LIBRARY_PATH"
+              export NIX_LDFLAGS="-L$STDCXX_PATH $NIX_LDFLAGS"
+              mkdir -p "$VCPKG_DOWNLOADS" "$VCPKG_DEFAULT_BINARY_CACHE"
 
-              PRESET_BUILD_DIR="build/nix-dev" 
-  
-              if [ ! -f compile_commands.json ]; then
-                echo "First-time setup: Bootstrapping CMake with vcpkg for clangd..."
-                
-                cmake --preset nix-dev
-                cmake --build --preset nix-dev || true
-                
-                if [ -f "$PRESET_BUILD_DIR/compile_commands.json" ]; then
-                  ln -sf "$PRESET_BUILD_DIR/compile_commands.json" .
-                  echo "compile_commands.json linked to project root!"
-                fi
+              if [ ! -f "$VCPKG_ROOT/vcpkg" ]; then
+                echo "Bootstrapping vcpkg submodule..."
+                chmod +x "$VCPKG_ROOT/bootstrap-vcpkg.sh"
+                "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
               fi
+
+              PRESET_BUILD_DIR="build/nix-dev"
+              if [ -f "$PRESET_BUILD_DIR/compile_commands.json" ]; then
+                ln -sf "$PRESET_BUILD_DIR/compile_commands.json" .
+              fi
+
+              echo "Dev shell ready. Use 'just reconfigure' to start the build."
             '';
           };
         });
