@@ -7,3 +7,5 @@
 *.dll
 .direnv/
 .vcpkg/
+.idea
+cmake-build-debug/
