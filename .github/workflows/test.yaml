@@ -22,6 +22,21 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+      - name: Debug submodules
+        run: |
+          set -euxo pipefail
+          echo "=== .gitmodules ==="
+          cat .gitmodules || true
+          echo "=== submodule paths ==="
+          git config -f .gitmodules --get-regexp '^submodule\..*\.path$' || true
+          echo "=== submodule urls ==="
+          git config -f .gitmodules --get-regexp '^submodule\..*\.url$' || true
+          echo "=== git submodule status ==="
+          git submodule status --recursive || true
+          echo "=== find bootstrap-vcpkg.sh ==="
+          find . -maxdepth 3 -name bootstrap-vcpkg.sh -print || true
+          echo "=== ls top level ==="
+          ls -la
       - name: Ensure submodules are present
         run: |
           git submodule sync --recursive
