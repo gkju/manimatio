@@ -10,6 +10,7 @@ endif()
 # -----------------------
 project(manimatio LANGUAGES C CXX)
 find_package(msdfgen CONFIG REQUIRED)
+find_package(unofficial-skia CONFIG REQUIRED)
 
 option(ENABLE_LTO "Enable cross-language link-time optimization (LTO)" OFF)
 option(ENABLE_CUDA_EXT "Enable CUDA extension" OFF)
@@ -58,6 +59,8 @@ target_link_libraries(core PUBLIC rust_bridge)
 add_executable(app src/cpp/main.cpp)
 target_link_libraries(app PRIVATE 
   core
+  unofficial::skia::skia
+  unofficial::skia::modules::svg
   msdfgen::msdfgen
 )
 

@@ -5,6 +5,7 @@
         {
             "name": "msdfgen",
             "features": ["geometry-preprocessing"]
-        }
+        },
+        "skia"
     ]
 }

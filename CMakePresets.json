@@ -1,16 +1,24 @@
 {
   "version": 6,
-  "cmakeMinimumRequired": { "major": 3, "minor": 28, "patch": 0 },
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 28,
+    "patch": 0
+  },
   "testPresets": [
     {
       "name": "nix-dev",
       "displayName": "Nix Dev Tests",
       "configurePreset": "nix-dev",
-
       "output": {
         "shortProgress": true,
         "outputOnFailure": true,
-        "outputJUnitFile": "${sourceDir}/build/nix-dev/test-results/ctest.xml"
+        "verbosity": "verbose",
+        "outputLogFile": "${sourceDir}/build/nix-dev/test-results/ctest.log",
+        "outputJUnitFile": "${sourceDir}/build/nix-dev/test-results/ctest.xml",
+        "maxFailedTestOutputSize": 262144,
+        "maxPassedTestOutputSize": 32768,
+        "testOutputTruncation": "tail"
       }
     }
   ],
@@ -58,12 +66,10 @@
       "displayName": "Nix Dev",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/nix-dev",
-
       "environment": {
         "VCPKG_ROOT": "${sourceDir}/vcpkg"
       },
       "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
-
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
@@ -77,12 +83,10 @@
       "displayName": "Nix Release + cross-language ThinLTO",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/nix-release-lto",
-
       "environment": {
         "VCPKG_ROOT": "${sourceDir}/vcpkg"
       },
       "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
-
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
@@ -104,14 +108,43 @@
         "CMAKE_C_COMPILER": "clang",
         "CMAKE_CXX_COMPILER": "clang++"
       }
+    },
+    {
+      "name": "windows",
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "VCPKG_TARGET_TRIPLET": "x64-windows-static-md"
+      }
     }
   ],
   "buildPresets": [
-    { "name": "dev", "configurePreset": "dev" },
-    { "name": "release", "configurePreset": "release" },
-    { "name": "release-lto", "configurePreset": "release-lto" },
-    { "name": "nix-dev", "configurePreset": "nix-dev" },
-    { "name": "nix-release-lto", "configurePreset": "nix-release-lto" },
-    { "name": "docker-release-lto", "configurePreset": "docker-release-lto" }
+    {
+      "name": "dev",
+      "configurePreset": "dev"
+    },
+    {
+      "name": "release",
+      "configurePreset": "release"
+    },
+    {
+      "name": "release-lto",
+      "configurePreset": "release-lto"
+    },
+    {
+      "name": "nix-dev",
+      "configurePreset": "nix-dev"
+    },
+    {
+      "name": "nix-release-lto",
+      "configurePreset": "nix-release-lto"
+    },
+    {
+      "name": "docker-release-lto",
+      "configurePreset": "docker-release-lto"
+    },
+    {
+      "name": "windows",
+      "configurePreset": "windows"
+    }
   ]
 }

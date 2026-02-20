@@ -2,9 +2,9 @@ name: Manimatio unit tests
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 jobs:
   build-and-test:
@@ -22,18 +22,18 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+
       - name: Ensure submodules are present
-        run: |
-          test -f vcpkg/bootstrap-vcpkg.sh
+        run: test -f vcpkg/bootstrap-vcpkg.sh
 
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@main
-        
+
       - name: Enable Magic Nix Cache
         uses: DeterminateSystems/magic-nix-cache-action@main
         with:
           use-flakehub: false
-          
+
       - name: Setup vcpkg cache
         uses: actions/cache@v4
         with:
@@ -65,16 +65,20 @@ jobs:
           nix develop -c ctest --preset nix-dev
           echo "::endgroup::"
 
-      - name: Publish test results
+      - name: Test report
         if: ${{ !cancelled() }}
-        uses: EnricoMi/publish-unit-test-result-action@v2
+        uses: dorny/test-reporter@v2
         with:
-          files: build/nix-dev/test-results/*.xml
-          check_name: "CTest (nix-dev / ${{ github.event_name }})"
-          job_summary: true
-          fail_on: "test failures"
-          action_fail: false
-          comment_mode: ${{ github.event_name == 'pull_request' && 'changes' || 'off' }}
+          name: "CTest (nix-dev / ${{ github.event_name }})"
+          path: build/nix-dev/test-results/ctest.xml
+          reporter: java-junit
+          use-actions-summary: "true"
+          only-summary: "false"
+          list-suites: "all"
+          list-tests: "all"
+          max-annotations: "50"
+          fail-on-error: "false"
+          fail-on-empty: "true"
 
       - name: Upload test artifacts
         if: ${{ !cancelled() }}
@@ -82,7 +86,7 @@ jobs:
         with:
           name: test-results
           path: |
-            build/nix-dev/test-results/ctest-junit.xml
+            build/nix-dev/test-results/ctest.xml
             build/nix-dev/test-results/ctest.log
 
       - name: Fail job if tests failed
