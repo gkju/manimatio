@@ -22,12 +22,19 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+      - name: Ensure submodules are present
+        run: |
+          git submodule sync --recursive
+          git submodule update --init --recursive
+          test -f vcpkg/bootstrap-vcpkg.sh
 
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@main
         
       - name: Enable Magic Nix Cache
         uses: DeterminateSystems/magic-nix-cache-action@main
+        with:
+          use-flakehub: false
 
       - name: Setup vcpkg cache
         uses: actions/cache@v4
@@ -40,10 +47,15 @@ jobs:
             ${{ runner.os }}-vcpkg-
 
       - name: Configure Project
-        run: nix develop --command cmake --preset nix-dev 
+        run: nix develop -c cmake --preset nix-dev
+
+      - name: Build tests
+        run: nix develop -c cmake --build --preset nix-dev --target tests
 
       - name: Run unit tests
-        run: nix develop --command just test-ci
+        run: |
+          mkdir -p build/nix-dev/test-results
+          nix develop -c ctest --preset nix-dev
 
       - name: Publish Test Results
         uses: EnricoMi/publish-unit-test-result-action@v2

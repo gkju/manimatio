@@ -42,7 +42,12 @@
               export LD_LIBRARY_PATH="$STDCXX_PATH:$LD_LIBRARY_PATH"
               export NIX_LDFLAGS="-L$STDCXX_PATH $NIX_LDFLAGS"
               mkdir -p "$VCPKG_DOWNLOADS" "$VCPKG_DEFAULT_BINARY_CACHE"
-
+              if [ ! -f "$VCPKG_ROOT/bootstrap-vcpkg.sh" ]; then
+                echo "ERROR: $VCPKG_ROOT/bootstrap-vcpkg.sh not found."
+                echo "Did you forget to checkout the vcpkg submodule?"
+                exit 1
+              fi
+              
               if [ ! -f "$VCPKG_ROOT/vcpkg" ]; then
                 echo "Bootstrapping vcpkg submodule..."
                 chmod +x "$VCPKG_ROOT/bootstrap-vcpkg.sh"
@@ -50,9 +55,6 @@
               fi
 
               PRESET_BUILD_DIR="build/nix-dev"
-              if [ -f "$PRESET_BUILD_DIR/compile_commands.json" ]; then
-                ln -sf "$PRESET_BUILD_DIR/compile_commands.json" .
-              fi
 
               echo "Dev shell ready. Use 'just reconfigure' to start the build."
             '';

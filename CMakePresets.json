@@ -1,6 +1,19 @@
 {
   "version": 6,
   "cmakeMinimumRequired": { "major": 3, "minor": 28, "patch": 0 },
+  "testPresets": [
+    {
+      "name": "nix-dev",
+      "displayName": "Nix Dev Tests",
+      "configurePreset": "nix-dev",
+
+      "output": {
+        "shortProgress": true,
+        "outputOnFailure": true,
+        "outputJUnitFile": "${sourceDir}/build/nix-dev/test-results/ctest.xml"
+      }
+    }
+  ],
   "configurePresets": [
     {
       "name": "dev",
@@ -45,9 +58,14 @@
       "displayName": "Nix Dev",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/nix-dev",
+
+      "environment": {
+        "VCPKG_ROOT": "${sourceDir}/vcpkg"
+      },
+      "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/vcpkg/scripts/buildsystems/vcpkg.cmake",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "ENABLE_LTO": "OFF",
         "CMAKE_C_COMPILER": "clang",
@@ -59,9 +77,14 @@
       "displayName": "Nix Release + cross-language ThinLTO",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/nix-release-lto",
+
+      "environment": {
+        "VCPKG_ROOT": "${sourceDir}/vcpkg"
+      },
+      "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/vcpkg/scripts/buildsystems/vcpkg.cmake",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "ENABLE_LTO": "ON",
         "CMAKE_C_COMPILER": "clang",
