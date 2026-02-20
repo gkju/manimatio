@@ -33,6 +33,16 @@ jobs:
         uses: DeterminateSystems/magic-nix-cache-action@main
         with:
           use-flakehub: false
+          
+      - name: Setup vcpkg cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .vcpkg/downloads
+            .vcpkg/bincache
+          key: ${{ runner.os }}-vcpkg-${{ hashFiles('vcpkg.json') }}
+          restore-keys: |
+            ${{ runner.os }}-vcpkg-
 
       - name: Configure
         run: |
@@ -40,13 +50,13 @@ jobs:
           nix develop -c cmake --preset nix-dev
           echo "::endgroup::"
 
-      - name: Build (tests)
+      - name: Build
         run: |
           echo "::group::Build"
           nix develop -c cmake --build --preset nix-dev --target tests
           echo "::endgroup::"
 
-      - name: Run tests (CTest)
+      - name: Run tests
         id: ctest
         continue-on-error: true
         run: |
@@ -55,7 +65,7 @@ jobs:
           nix develop -c ctest --preset nix-dev
           echo "::endgroup::"
 
-      - name: Publish test results (Checks + Job Summary)
+      - name: Publish test results
         if: ${{ !cancelled() }}
         uses: EnricoMi/publish-unit-test-result-action@v2
         with:
@@ -66,7 +76,7 @@ jobs:
           action_fail: false
           comment_mode: ${{ github.event_name == 'pull_request' && 'changes' || 'off' }}
 
-      - name: Upload test artifacts (JUnit + log)
+      - name: Upload test artifacts
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
