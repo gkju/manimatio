@@ -1,5 +1,4 @@
 /build/
-/vcpkg/
 /compile_commands.json
 *.so
 *.dylib
