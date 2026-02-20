@@ -36,29 +36,47 @@ jobs:
         with:
           use-flakehub: false
 
-      - name: Setup vcpkg cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            .vcpkg/downloads
-            .vcpkg/bincache
-          key: ${{ runner.os }}-vcpkg-${{ hashFiles('vcpkg.json') }}
-          restore-keys: |
-            ${{ runner.os }}-vcpkg-
+      - name: Configure
+        run: |
+          echo "::group::Configure"
+          nix develop -c cmake --preset nix-dev
+          echo "::endgroup::"
 
-      - name: Configure Project
-        run: nix develop -c cmake --preset nix-dev
+      - name: Build (tests)
+        run: |
+          echo "::group::Build"
+          nix develop -c cmake --build --preset nix-dev --target tests
+          echo "::endgroup::"
 
-      - name: Build tests
-        run: nix develop -c cmake --build --preset nix-dev --target tests
-
-      - name: Run unit tests
+      - name: Run tests (CTest)
+        id: ctest
+        continue-on-error: true
         run: |
           mkdir -p build/nix-dev/test-results
+          echo "::group::CTest"
           nix develop -c ctest --preset nix-dev
+          echo "::endgroup::"
 
-      - name: Publish Test Results
+      - name: Publish test results (Checks + Job Summary)
+        if: ${{ !cancelled() }}
         uses: EnricoMi/publish-unit-test-result-action@v2
-        if: always()
         with:
           files: build/nix-dev/test-results/*.xml
+          check_name: "CTest (nix-dev / ${{ github.event_name }})"
+          job_summary: true
+          fail_on: "test failures"
+          action_fail: false
+          comment_mode: ${{ github.event_name == 'pull_request' && 'changes' || 'off' }}
+
+      - name: Upload test artifacts (JUnit + log)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            build/nix-dev/test-results/ctest-junit.xml
+            build/nix-dev/test-results/ctest.log
+
+      - name: Fail job if tests failed
+        if: ${{ steps.ctest.outcome != 'success' }}
+        run: exit 1
