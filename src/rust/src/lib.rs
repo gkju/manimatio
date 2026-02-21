@@ -1,3 +1,5 @@
+mod esdt;
+
 use chrono::{Datelike, Local};
 use std::sync::OnceLock;
 use typst::diag::{FileError, FileResult};
@@ -10,7 +12,6 @@ use typst_kit::download::{DownloadState, Downloader, Progress};
 use typst_kit::fonts::FontSlot;
 use typst_kit::package::PackageStorage;
 use resvg::{tiny_skia, usvg};
-use sdfer::{esdt, Image2d, Unorm8};
 
 #[cxx::bridge]
 pub mod ffi {
@@ -31,11 +32,18 @@ pub mod ffi {
         error: String,
     }
 
+    struct RasterResultF32 {
+        width: u32,
+        height: u32,
+        data: Vec<f32>, 
+        error: String,
+    }
+
     extern "Rust" {
         fn render_typst_to_svg(code: &str) -> RenderResult;
         fn render_typst_sequence(template_code: &str, params_json: &str) -> SvgSequenceResult;
         fn rasterize_svg(svg: &str, scale: f32, grid_size: u32, force_w: u32, force_h: u32) -> RasterResult;
-        fn render_typst_to_sdf(code: &str, scale: f32, radius: f32, grid_size: u32, force_w: u32, force_h: u32) -> RasterResult;
+        fn render_typst_to_sdf_f32(code: &str, scale: f32, grid_size: u32, force_w: u32, force_h: u32) -> RasterResultF32;
     }
 }
 
@@ -87,36 +95,35 @@ pub fn rasterize_svg(svg: &str, scale: f32, grid_size: u32, force_w: u32, force_
     ffi::RasterResult { width: w, height: h, data: pixmap.take(), error: String::new() }
 }
 
-pub fn render_typst_to_sdf(code: &str, scale: f32, radius: f32, grid_size: u32, force_w: u32, force_h: u32) -> ffi::RasterResult {
+pub fn render_typst_to_sdf_f32(code: &str, scale: f32, grid_size: u32, force_w: u32, force_h: u32) -> ffi::RasterResultF32 {
     let svg_res = render_typst_to_svg(code);
     if !svg_res.error.is_empty() {
-        return ffi::RasterResult { width: 0, height: 0, data: vec![], error: svg_res.error };
+        return ffi::RasterResultF32 { width: 0, height: 0, data: vec![], error: svg_res.error };
     }
 
     let raster_res = rasterize_svg(&svg_res.svg, scale, grid_size, force_w, force_h);
-    if !raster_res.error.is_empty() { return raster_res; }
+    if !raster_res.error.is_empty() { 
+        return ffi::RasterResultF32 { width: 0, height: 0, data: vec![], error: raster_res.error };
+    }
 
     let width = raster_res.width as usize;
     let height = raster_res.height as usize;
     
-    let mut coverage = Vec::with_capacity(width * height);
+    let mut alpha_coverage = Vec::with_capacity(width * height);
     for chunk in raster_res.data.chunks_exact(4) {
-        coverage.push(Unorm8::from_bits(chunk[3])); 
+        alpha_coverage.push(chunk[3]); 
     }
 
-    let mut input_image = Image2d::from_storage(width, height, coverage);
-    
-    let params = esdt::Params { radius, pad: 0, ..Default::default() };
-    let (sdf_image, _) = esdt::glyph_to_sdf(&mut input_image, params, None);
+    let sdf_floats = esdt::compute_sdf(width, height, &alpha_coverage);
 
-    let mut sdf_bytes = Vec::with_capacity(width * height);
-    for y in 0..height {
-        for x in 0..width {
-            sdf_bytes.push(sdf_image[(x, y)].to_bits());
-        }
+    let final_data: Vec<f32> = sdf_floats.into_iter().map(|f| f as f32).collect();
+
+    ffi::RasterResultF32 { 
+        width: width as u32, 
+        height: height as u32, 
+        data: final_data, 
+        error: String::new() 
     }
-
-    ffi::RasterResult { width: width as u32, height: height as u32, data: sdf_bytes, error: String::new() }
 }
 
 struct DummyProgress;

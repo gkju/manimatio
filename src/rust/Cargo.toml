@@ -15,7 +15,6 @@ typst-kit = { version = "0.14.2", features = ["fonts", "embed-fonts"] }
 serde_json = "1.0.114"
 chrono = "0.4.35"
 resvg = "0.45"
-sdfer = "0.2.1"
 
 [profile.release]
 lto = "thin"

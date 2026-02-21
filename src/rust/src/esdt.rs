@@ -1,0 +1,202 @@
+pub type Float = f32; // | f64
+
+pub fn compute_sdf(width: usize, height: usize, data: &[u8]) -> Vec<Float> {
+    let np = width * height;
+    let mut xo = vec![0.0 as Float; np];
+    let mut yo = vec![0.0 as Float; np];
+    let mut xi = vec![0.0 as Float; np];
+    let mut yi = vec![0.0 as Float; np];
+    
+    let mut outer = vec![true; np];
+    let mut inner = vec![false; np];
+
+    for y in 0..height {
+        for x in 0..width {
+            let a = data[y * width + x];
+            if a == 0 { continue; }
+            
+            let i = y * width + x;
+            if a >= 254 {
+                outer[i] = false;
+                inner[i] = true;
+            } else {
+                outer[i] = false;
+                inner[i] = false;
+            }
+        }
+    }
+
+    let get_data = |x: isize, y: isize| -> Float {
+        if x >= 0 && (x as usize) < width && y >= 0 && (y as usize) < height {
+            (data[y as usize * width + x as usize] as Float) / 255.0
+        } else {
+            0.0
+        }
+    };
+
+    let is_solid = |v: Float| v <= 0.0 || v >= 1.0;
+    let is_black = |v: Float| v <= 0.0;
+    let is_white = |v: Float| v >= 1.0;
+
+    for y in 0..(height as isize) {
+        for x in 0..(width as isize) {
+            let c = get_data(x, y);
+            let j = (y as usize) * width + (x as usize);
+
+            if !is_solid(c) {
+                let dc = c - 0.5;
+                let l = get_data(x - 1, y); let r = get_data(x + 1, y);
+                let t = get_data(x, y - 1); let b = get_data(x, y + 1);
+                let tl = get_data(x - 1, y - 1); let tr = get_data(x + 1, y - 1);
+                let bl = get_data(x - 1, y + 1); let br = get_data(x + 1, y + 1);
+
+                let ll = (tl + l * 2.0 + bl) / 4.0;
+                let rr = (tr + r * 2.0 + br) / 4.0;
+                let tt = (tl + t * 2.0 + tr) / 4.0;
+                let bb = (bl + b * 2.0 + br) / 4.0;
+
+                let min = [l, r, t, b, tl, tr, bl, br].into_iter().fold(Float::INFINITY, |a, b| a.min(b));
+                let max = [l, r, t, b, tl, tr, bl, br].into_iter().fold(Float::NEG_INFINITY, |a, b| a.max(b));
+
+                if min > 0.0 {
+                    inner[j] = true;
+                    continue;
+                }
+                if max < 1.0 {
+                    outer[j] = true;
+                    continue;
+                }
+
+                let mut dx = rr - ll;
+                let mut dy = bb - tt;
+                let dist_sq = dx * dx + dy * dy;
+                
+                if dist_sq > 0.0 {
+                    let dl = 1.0 / dist_sq.sqrt();
+                    dx *= dl; dy *= dl;
+                } else {
+                    dx = 0.0; dy = 0.0;
+                }
+
+                xo[j] = -dc * dx;
+                yo[j] = -dc * dy;
+            } else if is_white(c) {
+                let l = get_data(x - 1, y); let r = get_data(x + 1, y);
+                let t = get_data(x, y - 1); let b = get_data(x, y + 1);
+
+                if is_black(l) && x > 0 {
+                    xo[j - 1] = 0.4999;
+                    outer[j - 1] = false; inner[j - 1] = false;
+                }
+                if is_black(r) && (x as usize) + 1 < width {
+                    xo[j + 1] = -0.4999;
+                    outer[j + 1] = false; inner[j + 1] = false;
+                }
+                if is_black(t) && y > 0 {
+                    yo[j - width] = 0.4999;
+                    outer[j - width] = false; inner[j - width] = false;
+                }
+                if is_black(b) && (y as usize) + 1 < height {
+                    yo[j + width] = -0.4999;
+                    outer[j + width] = false; inner[j + width] = false;
+                }
+            }
+        }
+    }
+
+    for y in 0..(height as isize) {
+        for x in 0..(width as isize) {
+            let j = (y as usize) * width + (x as usize);
+            let nx = xo[j]; let ny = yo[j];
+            if nx == 0.0 && ny == 0.0 { continue; }
+
+            let nn = (nx * nx + ny * ny).sqrt();
+            let sx = if (nx / nn).abs() - 0.5 > 0.0 { if nx > 0.0 { 1 } else { -1 } } else { 0 };
+            let sy = if (ny / nn).abs() - 0.5 > 0.0 { if ny > 0.0 { 1 } else { -1 } } else { 0 };
+
+            let c = get_data(x, y);
+            let d = get_data(x + sx, y + sy);
+            let s = if d > c { 1.0 } else if d < c { -1.0 } else { 0.0 };
+
+            let dlo = (nn + 0.4999 * s) / nn;
+            let dli = (nn - 0.4999 * s) / nn;
+
+            xo[j] = nx * dlo; yo[j] = ny * dlo;
+            xi[j] = nx * dli; yi[j] = ny * dli;
+        }
+    }
+
+    esdt(&mut outer, &mut xo, &mut yo, width, height);
+    esdt(&mut inner, &mut xi, &mut yi, width, height);
+
+    let mut out = vec![0.0; np];
+    for i in 0..np {
+        let outer_d = ((xo[i] * xo[i] + yo[i] * yo[i]).sqrt() - 0.5).max(0.0);
+        let inner_d = ((xi[i] * xi[i] + yi[i] * yi[i]).sqrt() - 0.5).max(0.0);
+        out[i] = if outer_d >= inner_d { outer_d } else { -inner_d };
+    }
+    out
+}
+
+fn esdt(mask: &mut [bool], xs: &mut [Float], ys: &mut [Float], w: usize, h: usize) {
+    for x in 0..w { esdt1d(mask, ys, xs, x, w, h); }
+    for y in 0..h { esdt1d(mask, xs, ys, y * w, 1, w); }
+}
+
+fn esdt1d(mask: &mut [bool], xs: &mut [Float], ys: &mut [Float], offset: usize, stride: usize, length: usize) {
+    let inf = 1e10 as Float;
+    let mut f = vec![0.0; length];
+    let mut z = vec![0.0; length + 1];
+    let mut b = vec![0.0; length];
+    let mut t = vec![0.0; length];
+    let mut v = vec![0; length];
+
+    v[0] = 0;
+    b[0] = xs[offset];
+    t[0] = ys[offset];
+    z[0] = -inf;
+    z[1] = inf;
+    f[0] = if mask[offset] { inf } else { ys[offset] * ys[offset] };
+
+    let mut k = 0;
+    for q in 1..length {
+        let o = offset + q * stride;
+        let dx = xs[o]; let dy = ys[o];
+        let fq = if mask[o] { inf } else { dy * dy };
+        
+        f[q] = fq;
+        t[q] = dy;
+
+        let qs = (q as Float) + dx;
+        let q2 = qs * qs;
+        b[q] = qs;
+
+        let mut s = 0.0;
+        loop {
+            let r = v[k];
+            let rs = b[r];
+            let r2 = rs * rs;
+            s = (fq - f[r] + q2 - r2) / (qs - rs) / 2.0;
+            if s <= z[k] && k > 0 { k -= 1; } else { break; }
+        }
+        k += 1;
+        v[k] = q;
+        z[k] = s;
+        z[k + 1] = inf;
+    }
+
+    k = 0;
+    for q in 0..length {
+        while z[k + 1] < (q as Float) { k += 1; }
+        let r = v[k];
+        let rs = b[r];
+        let dy = t[r];
+        let rq = rs - (q as Float);
+
+        let o = offset + q * stride;
+        xs[o] = rq;
+        ys[o] = dy;
+
+        if r != q { mask[o] = false; }
+    }
+}
