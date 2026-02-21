@@ -1,6 +1,9 @@
 #include <cstring>
 #include <iostream>
 #include <string>
+#include <vector>
+#include <iomanip>
+#include <sstream>
 #include "rust_bridge/lib.h"
 #include <OpenImageIO/imageio.h>
 
@@ -12,55 +15,87 @@ bool save_image(const std::string& filename, int width, int height, int channels
         std::cerr << "Could not create output file: " << filename << std::endl;
         return false;
     }
-    
     ImageSpec spec(width, height, channels, TypeDesc::UINT8);
     out->open(filename, spec);
     out->write_image(TypeDesc::UINT8, data);
     out->close();
-    
     return true;
 }
 
 int main() {
-    std::string typst_code = 
-        "= SDF Rendering Demo\n\n"
-        "Testing Typst -> SVG -> PNG -> SDF via Rust and C++!";
+    // Generate two distinct shapes to morph between
+    std::string typst_A = 
+        "#set page(width: auto, height: auto, margin: 10pt)\n"
+        "#text(size: 80pt, weight: \"bold\", fill: black)[Rust]";
+        
+    std::string typst_B = 
+        "#set page(width: auto, height: auto, margin: 10pt)\n"
+        "#text(size: 80pt, weight: \"bold\", fill: black)[C++]";
 
-    // Settings
-    float scale = 2.0f;
-    uint32_t canvas_w = 1920;
-    uint32_t canvas_h = 1080;
-    float sdf_radius = 12.0f;
+    float scale = 8.0f;
+    
+    // It must be large enough to bridge the physical pixel gap between shapes.
+    float sdf_radius = 256.0f; 
+    
+    uint32_t grid_size = 2048; 
+    uint32_t force_w = 0;
+    uint32_t force_h = 0;
 
-    std::cout << "1. Converting Typst to SVG..." << std::endl;
-    auto svg_res = render_typst_to_svg(typst_code);
-    if (!svg_res.error.empty()) {
-        std::cerr << "Typst to SVG Error: " << std::string(svg_res.error) << std::endl;
+    std::cout << "1. Generating SDF A..." << std::endl;
+    auto sdf_res_A = render_typst_to_sdf(typst_A, scale, sdf_radius, grid_size, force_w, force_h);
+    if (!sdf_res_A.error.empty()) { std::cerr << "SDF A Error: " << std::string(sdf_res_A.error) << std::endl; return 1; }
+
+    std::cout << "2. Generating SDF B..." << std::endl;
+    auto sdf_res_B = render_typst_to_sdf(typst_B, scale, sdf_radius, grid_size, force_w, force_h);
+    if (!sdf_res_B.error.empty()) { std::cerr << "SDF B Error: " << std::string(sdf_res_B.error) << std::endl; return 1; }
+
+    if (sdf_res_A.width != sdf_res_B.width || sdf_res_A.height != sdf_res_B.height) {
+        std::cerr << "Mismatch! A is " << sdf_res_A.width << "x" << sdf_res_A.height 
+                  << " but B is " << sdf_res_B.width << "x" << sdf_res_B.height << std::endl;
         return 1;
     }
 
-    std::cout << "2. Rasterizing SVG to 4K Canvas (RGBA)..." << std::endl;
-    auto raster_res = rasterize_svg(svg_res.svg, scale, canvas_w, canvas_h);
-    if (!raster_res.error.empty()) {
-        std::cerr << "Rasterize Error: " << std::string(raster_res.error) << std::endl;
-        return 1;
+    std::cout << "3. Interpolating High-DPI Morph Sequence (" << sdf_res_A.width << "x" << sdf_res_A.height << ")...\n";
+    
+    int num_frames = 60;
+    size_t np = sdf_res_A.width * sdf_res_A.height;
+    std::vector<uint8_t> frame_buffer(np);
+
+    float threshold = 191.25f; 
+    
+    float edge_aa_width = 2.0f * scale; 
+
+    for (int i = 0; i < num_frames; ++i) {
+        float t = i / (float)(num_frames - 1);
+        
+        float smooth_t = t * t * (3.0f - 2.0f * t);
+
+        float cutoff = 0.25f;
+        float crisp_aa_width = 1.0f; 
+
+        for (size_t p = 0; p < np; ++p) {
+            float valA = sdf_res_A.data[p] / 255.0f;
+            float valB = sdf_res_B.data[p] / 255.0f;
+            
+            float d_A = sdf_radius * (1.0f - cutoff - valA);
+            float d_B = sdf_radius * (1.0f - cutoff - valB);
+            
+            float d_blend = d_A * (1.0f - smooth_t) + d_B * smooth_t;
+            
+            float alpha = 0.5f - (d_blend / (2.0f * crisp_aa_width));
+            
+            alpha = std::max(0.0f, std::min(1.0f, alpha)); 
+            
+            frame_buffer[p] = static_cast<uint8_t>(alpha * 255.0f);
+        }
+
+        std::ostringstream ss;
+        ss << "frame_" << std::setw(2) << std::setfill('0') << i << ".png";
+        
+        save_image(ss.str(), sdf_res_A.width, sdf_res_A.height, 1, frame_buffer.data());
+        std::cout << "\rSaved " << ss.str() << std::flush;
     }
     
-    if (save_image("output_color.png", raster_res.width, raster_res.height, 4, raster_res.data.data())) {
-        std::cout << " -> Saved output_color.png" << std::endl;
-    }
-
-    std::cout << "3. Generating SDF Map (Grayscale)..." << std::endl;
-    auto sdf_res = render_typst_to_sdf(typst_code, scale, sdf_radius, canvas_w, canvas_h);
-    if (!sdf_res.error.empty()) {
-        std::cerr << "SDF Error: " << std::string(sdf_res.error) << std::endl;
-        return 1;
-    }
-
-    if (save_image("output_sdf.png", sdf_res.width, sdf_res.height, 1, sdf_res.data.data())) {
-        std::cout << " -> Saved output_sdf.png" << std::endl;
-    }
-
-    std::cout << "Demo completed successfully." << std::endl;
+    std::cout << "\nHigh-DPI Demo completed successfully!" << std::endl;
     return 0;
 }

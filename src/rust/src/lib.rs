@@ -34,28 +34,36 @@ pub mod ffi {
     extern "Rust" {
         fn render_typst_to_svg(code: &str) -> RenderResult;
         fn render_typst_sequence(template_code: &str, params_json: &str) -> SvgSequenceResult;
-        fn rasterize_svg(svg: &str, scale: f32, canvas_width: u32, canvas_height: u32) -> RasterResult;
-        fn render_typst_to_sdf(code: &str, scale: f32, radius: f32, canvas_width: u32, canvas_height: u32) -> RasterResult;
+        fn rasterize_svg(svg: &str, scale: f32, grid_size: u32, force_w: u32, force_h: u32) -> RasterResult;
+        fn render_typst_to_sdf(code: &str, scale: f32, radius: f32, grid_size: u32, force_w: u32, force_h: u32) -> RasterResult;
     }
 }
 
-pub fn rasterize_svg(svg: &str, scale: f32, canvas_width: u32, canvas_height: u32) -> ffi::RasterResult {
+pub fn rasterize_svg(svg: &str, scale: f32, grid_size: u32, force_w: u32, force_h: u32) -> ffi::RasterResult {
     let opt = usvg::Options::default();
     
     let tree = match usvg::Tree::from_str(svg, &opt) {
         Ok(t) => t,
         Err(e) => {
             return ffi::RasterResult {
-                width: 0,
-                height: 0,
-                data: vec![],
+                width: 0, height: 0, data: vec![],
                 error: format!("SVG parsing failed: {:?}", e),
             }
         }
     };
 
-    let w = if canvas_width > 0 { canvas_width } else { (tree.size().width() * scale).ceil() as u32 };
-    let h = if canvas_height > 0 { canvas_height } else { (tree.size().height() * scale).ceil() as u32 };
+    let intrinsic_w = tree.size().width() * scale;
+    let intrinsic_h = tree.size().height() * scale;
+    
+    let mut w = intrinsic_w.ceil() as u32;
+    let mut h = intrinsic_h.ceil() as u32;
+
+    // Apply strict bounds or snap to grid composition size
+    if force_w > 0 { w = force_w; }
+    else if grid_size > 0 { w = ((w + grid_size - 1) / grid_size) * grid_size; }
+
+    if force_h > 0 { h = force_h; }
+    else if grid_size > 0 { h = ((h + grid_size - 1) / grid_size) * grid_size; }
     
     if w == 0 || h == 0 {
         return ffi::RasterResult {
@@ -66,35 +74,27 @@ pub fn rasterize_svg(svg: &str, scale: f32, canvas_width: u32, canvas_height: u3
 
     let mut pixmap = match tiny_skia::Pixmap::new(w, h) {
         Some(p) => p,
-        None => {
-            return ffi::RasterResult {
-                width: 0, height: 0, data: vec![],
-                error: "Failed to allocate pixel map".to_string(),
-            }
-        }
+        None => return ffi::RasterResult { width: 0, height: 0, data: vec![], error: "Failed to allocate pixel map".to_string() }
     };
 
-    let transform = tiny_skia::Transform::from_scale(scale, scale);
+    // Center the SVG on the canvas (crucial for grid layouts and morphing alignment)
+    let dx = (w as f32 - intrinsic_w) / 2.0;
+    let dy = (h as f32 - intrinsic_h) / 2.0;
+    
+    let transform = tiny_skia::Transform::from_scale(scale, scale).post_translate(dx, dy);
     resvg::render(&tree, transform, &mut pixmap.as_mut());
 
-    ffi::RasterResult {
-        width: w,
-        height: h,
-        data: pixmap.take(),
-        error: String::new(),
-    }
+    ffi::RasterResult { width: w, height: h, data: pixmap.take(), error: String::new() }
 }
 
-pub fn render_typst_to_sdf(code: &str, scale: f32, radius: f32, canvas_width: u32, canvas_height: u32) -> ffi::RasterResult {
+pub fn render_typst_to_sdf(code: &str, scale: f32, radius: f32, grid_size: u32, force_w: u32, force_h: u32) -> ffi::RasterResult {
     let svg_res = render_typst_to_svg(code);
     if !svg_res.error.is_empty() {
         return ffi::RasterResult { width: 0, height: 0, data: vec![], error: svg_res.error };
     }
 
-    let raster_res = rasterize_svg(&svg_res.svg, scale, canvas_width, canvas_height);
-    if !raster_res.error.is_empty() {
-        return raster_res;
-    }
+    let raster_res = rasterize_svg(&svg_res.svg, scale, grid_size, force_w, force_h);
+    if !raster_res.error.is_empty() { return raster_res; }
 
     let width = raster_res.width as usize;
     let height = raster_res.height as usize;
@@ -106,30 +106,17 @@ pub fn render_typst_to_sdf(code: &str, scale: f32, radius: f32, canvas_width: u3
 
     let mut input_image = Image2d::from_storage(width, height, coverage);
     
-    let params = esdt::Params {
-        radius,
-        pad: 0,
-        ..Default::default()
-    };
-
+    let params = esdt::Params { radius, pad: 0, ..Default::default() };
     let (sdf_image, _) = esdt::glyph_to_sdf(&mut input_image, params, None);
 
-    let out_width = sdf_image.width();
-    let out_height = sdf_image.height();
-    let mut sdf_bytes = Vec::with_capacity(out_width * out_height);
-    
-    for y in 0..out_height {
-        for x in 0..out_width {
+    let mut sdf_bytes = Vec::with_capacity(width * height);
+    for y in 0..height {
+        for x in 0..width {
             sdf_bytes.push(sdf_image[(x, y)].to_bits());
         }
     }
 
-    ffi::RasterResult {
-        width: out_width as u32,
-        height: out_height as u32,
-        data: sdf_bytes,
-        error: String::new(),
-    }
+    ffi::RasterResult { width: width as u32, height: height as u32, data: sdf_bytes, error: String::new() }
 }
 
 struct DummyProgress;
