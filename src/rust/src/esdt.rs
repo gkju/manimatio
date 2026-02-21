@@ -171,7 +171,7 @@ fn esdt1d(mask: &mut [bool], xs: &mut [Float], ys: &mut [Float], offset: usize, 
         let q2 = qs * qs;
         b[q] = qs;
 
-        let mut s = 0.0;
+        let mut s;
         loop {
             let r = v[k];
             let rs = b[r];
