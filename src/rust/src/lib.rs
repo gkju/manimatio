@@ -9,6 +9,8 @@ use typst::{Library, LibraryExt, World};
 use typst_kit::download::{DownloadState, Downloader, Progress};
 use typst_kit::fonts::FontSlot;
 use typst_kit::package::PackageStorage;
+use resvg::{tiny_skia, usvg};
+use sdfer::{esdt, Image2d, Unorm8};
 
 #[cxx::bridge]
 pub mod ffi {
@@ -22,9 +24,111 @@ pub mod ffi {
         error: String,
     }
 
+    struct RasterResult {
+        width: u32,
+        height: u32,
+        data: Vec<u8>,
+        error: String,
+    }
+
     extern "Rust" {
         fn render_typst_to_svg(code: &str) -> RenderResult;
         fn render_typst_sequence(template_code: &str, params_json: &str) -> SvgSequenceResult;
+        fn rasterize_svg(svg: &str, scale: f32, canvas_width: u32, canvas_height: u32) -> RasterResult;
+        fn render_typst_to_sdf(code: &str, scale: f32, radius: f32, canvas_width: u32, canvas_height: u32) -> RasterResult;
+    }
+}
+
+pub fn rasterize_svg(svg: &str, scale: f32, canvas_width: u32, canvas_height: u32) -> ffi::RasterResult {
+    let opt = usvg::Options::default();
+    
+    let tree = match usvg::Tree::from_str(svg, &opt) {
+        Ok(t) => t,
+        Err(e) => {
+            return ffi::RasterResult {
+                width: 0,
+                height: 0,
+                data: vec![],
+                error: format!("SVG parsing failed: {:?}", e),
+            }
+        }
+    };
+
+    let w = if canvas_width > 0 { canvas_width } else { (tree.size().width() * scale).ceil() as u32 };
+    let h = if canvas_height > 0 { canvas_height } else { (tree.size().height() * scale).ceil() as u32 };
+    
+    if w == 0 || h == 0 {
+        return ffi::RasterResult {
+            width: 0, height: 0, data: vec![],
+            error: "Invalid SVG dimensions (0-width or 0-height)".to_string(),
+        };
+    }
+
+    let mut pixmap = match tiny_skia::Pixmap::new(w, h) {
+        Some(p) => p,
+        None => {
+            return ffi::RasterResult {
+                width: 0, height: 0, data: vec![],
+                error: "Failed to allocate pixel map".to_string(),
+            }
+        }
+    };
+
+    let transform = tiny_skia::Transform::from_scale(scale, scale);
+    resvg::render(&tree, transform, &mut pixmap.as_mut());
+
+    ffi::RasterResult {
+        width: w,
+        height: h,
+        data: pixmap.take(),
+        error: String::new(),
+    }
+}
+
+pub fn render_typst_to_sdf(code: &str, scale: f32, radius: f32, canvas_width: u32, canvas_height: u32) -> ffi::RasterResult {
+    let svg_res = render_typst_to_svg(code);
+    if !svg_res.error.is_empty() {
+        return ffi::RasterResult { width: 0, height: 0, data: vec![], error: svg_res.error };
+    }
+
+    let raster_res = rasterize_svg(&svg_res.svg, scale, canvas_width, canvas_height);
+    if !raster_res.error.is_empty() {
+        return raster_res;
+    }
+
+    let width = raster_res.width as usize;
+    let height = raster_res.height as usize;
+    
+    let mut coverage = Vec::with_capacity(width * height);
+    for chunk in raster_res.data.chunks_exact(4) {
+        coverage.push(Unorm8::from_bits(chunk[3])); 
+    }
+
+    let mut input_image = Image2d::from_storage(width, height, coverage);
+    
+    let params = esdt::Params {
+        radius,
+        pad: 0,
+        ..Default::default()
+    };
+
+    let (sdf_image, _) = esdt::glyph_to_sdf(&mut input_image, params, None);
+
+    let out_width = sdf_image.width();
+    let out_height = sdf_image.height();
+    let mut sdf_bytes = Vec::with_capacity(out_width * out_height);
+    
+    for y in 0..out_height {
+        for x in 0..out_width {
+            sdf_bytes.push(sdf_image[(x, y)].to_bits());
+        }
+    }
+
+    ffi::RasterResult {
+        width: out_width as u32,
+        height: out_height as u32,
+        data: sdf_bytes,
+        error: String::new(),
     }
 }
 
@@ -182,7 +286,7 @@ pub fn render_typst_to_svg(code: &str) -> ffi::RenderResult {
                     error: String::new(),
                 };
             }
-            let svg = typst_svg::svg(&doc.pages[0]);
+            let svg = typst_svg::svg_frame(&doc.pages[0].frame);
             ffi::RenderResult {
                 svg,
                 error: String::new(),
@@ -210,7 +314,7 @@ pub fn render_typst_sequence(template_code: &str, params_json: &str) -> ffi::Svg
 
     match typst::compile::<typst::layout::PagedDocument>(&world).output {
         Ok(doc) => {
-            let svgs: Vec<String> = doc.pages.iter().map(|page| typst_svg::svg(page)).collect();
+            let svgs: Vec<String> = doc.pages.iter().map(|page| typst_svg::svg_frame(&page.frame)).collect();
             ffi::SvgSequenceResult {
                 svgs,
                 error: String::new(),

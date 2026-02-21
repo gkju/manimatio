@@ -9,8 +9,7 @@ endif()
 # Project setup
 # -----------------------
 project(manimatio LANGUAGES C CXX)
-find_package(msdfgen CONFIG REQUIRED)
-find_package(unofficial-skia CONFIG REQUIRED)
+find_package(OpenImageIO CONFIG REQUIRED)
 
 option(ENABLE_LTO "Enable cross-language link-time optimization (LTO)" OFF)
 option(ENABLE_CUDA_EXT "Enable CUDA extension" OFF)
@@ -62,9 +61,6 @@ target_link_libraries(core PUBLIC rust_bridge)
 add_executable(app src/cpp/main.cpp)
 target_link_libraries(app PRIVATE 
   core
-  unofficial::skia::skia
-  unofficial::skia::modules::svg
-  msdfgen::msdfgen
 )
 
 # -----------------------
@@ -107,7 +103,7 @@ if(ENABLE_LTO)
 
   get_property(_snippets GLOBAL PROPERTY ALL_SNIPPET_TARGETS)
   get_property(_tests GLOBAL PROPERTY ALL_TEST_TARGETS)
-  
+
   enable_cross_language_lto(TARGETS core app ${_snippets} ${_tests} RUST_TARGET manimatio_rust_lib)
 endif()
 
