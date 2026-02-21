@@ -10,6 +10,9 @@ default:
 build:
     cmake --build --preset {{preset}}
 
+release:
+    cmake --build --preset nix-release-lto
+
 # Build and run all unit tests
 test *args:
     cmake --build --preset {{preset}} --target tests

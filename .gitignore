@@ -8,3 +8,4 @@
 .vcpkg/
 .idea
 cmake-build-debug/
+src/rust/target/

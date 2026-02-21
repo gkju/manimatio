@@ -29,6 +29,7 @@
               util-linux
               mesa libGL
               libx11 libxcursor libxinerama libxi
+              openssl
             ];
 
             shellHook = ''

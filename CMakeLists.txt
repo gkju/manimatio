@@ -41,6 +41,9 @@ corrosion_add_cxxbridge(rust_bridge
   FILES lib.rs
 )
 
+find_package(OpenSSL REQUIRED)
+target_link_libraries(rust_bridge INTERFACE OpenSSL::SSL OpenSSL::Crypto)
+
 # -----------------------
 # Catch2 setup
 # -----------------------
@@ -101,7 +104,11 @@ endif()
 # -----------------------
 if(ENABLE_LTO)
   include(${CMAKE_SOURCE_DIR}/cmake/EnableCrossLangLTO.cmake)
-  enable_cross_language_lto(TARGETS core app RUST_TARGET manimatio_rust_lib)
+
+  get_property(_snippets GLOBAL PROPERTY ALL_SNIPPET_TARGETS)
+  get_property(_tests GLOBAL PROPERTY ALL_TEST_TARGETS)
+  
+  enable_cross_language_lto(TARGETS core app ${_snippets} ${_tests} RUST_TARGET manimatio_rust_lib)
 endif()
 
 # -----------------------
