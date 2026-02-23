@@ -43,18 +43,43 @@ pub mod ffi {
         fn render_typst_to_svg(code: &str) -> RenderResult;
         fn render_typst_sequence(template_code: &str, params_json: &str) -> SvgSequenceResult;
         
-        // Rasterization into plain straight (not premultiplied) RGBA bytes
+        /// Rasterize an SVG to an RGBA8 pixel buffer using `resvg` + `tiny-skia`.
+        ///
+        /// Output format:
+        /// - `data`: RGBA8 with **premultiplied alpha**
+        /// - `width`, `height`: snapped to `grid_size` unless overridden by `force_w/force_h`
+        ///
+        /// The SVG is scaled by `scale` and centered in the output canvas.
+        /// This is useful for consistent alignment in morphing/compositing pipelines.
         fn rasterize_svg(svg: &str, scale: f32, grid_size: u32, force_w: u32, force_h: u32) -> RasterResult;
         
         // Typst -> SDF
         fn render_typst_to_sdf_f32(code: &str, scale: f32, grid_size: u32, force_w: u32, force_h: u32) -> RasterResultF32;
 
-        // Typst -> RGBA+SDF = [R(float), G(float), B(float), SDF_Distance(float), ...]
+        // Typst -> packed float RGBD (not RGBA):
+        // [R, G, B, signed_distance, ...]
+        // RGB is straight propagated color; distance is in pixel units.
         fn render_typst_to_rgba_esdt(code: &str, scale: f32, grid_size: u32, force_w: u32, force_h: u32, spread: f32) -> RasterResult;
+        /// Compile Typst -> SVG -> raster -> color-propagated ESDT.
+        ///
+        /// Returns packed float data in `[R, G, B, D]` layout per pixel:
+        /// - `R,G,B` are **straight propagated colors** in `[0,1]`
+        /// - `D` is signed distance in pixel units (`<0` inside, `>0` outside)
+        ///
+        /// Input rasterization is premultiplied RGBA (from tiny-skia), but AA-edge RGB is ignored
+        /// during color seeding to avoid premultiplication artifacts.
         fn render_typst_to_rgba_esdt_f32(code: &str, scale: f32, grid_size: u32, force_w: u32, force_h: u32) -> RasterResultF32;
 
         // ESDT fns
         fn compute_esdt_alpha(width: u32, height: u32, alpha: &[u8]) -> RasterResultF32;
+        /// Compute an RGBA8 SDF texture from premultiplied RGBA8 input.
+        ///
+        /// Output:
+        /// - RGB: straight propagated color field (spilled into transparent space)
+        /// - A:   normalized SDF alpha encoded with `spread`
+        ///
+        /// This output is intended for SDF reconstruction/shader sampling and may require
+        /// premultiplication at final render time depending on the consumer pipeline.
         fn compute_esdt_rgba8(width: u32, height: u32, rgba: &[u8], spread: f32) -> RasterResult;
         fn compute_esdt_rgba32f(width: u32, height: u32, rgba: &[u8]) -> RasterResultF32;
     }
@@ -105,18 +130,7 @@ pub fn rasterize_svg(svg: &str, scale: f32, grid_size: u32, force_w: u32, force_
     let transform = tiny_skia::Transform::from_scale(scale, scale).post_translate(dx, dy);
     resvg::render(&tree, transform, &mut pixmap.as_mut());
 
-    let mut data = pixmap.take();
-    
-    // Un-premultiply the alpha channel locally so the straight RGBA is maintained 
-    // This allows exact sampling for anti-aliased edge colors when creating an RGBA ESDT.
-    for chunk in data.chunks_exact_mut(4) {
-        let a = chunk[3] as u32;
-        if a > 0 && a < 255 {
-            chunk[0] = ((chunk[0] as u32 * 255) / a) as u8;
-            chunk[1] = ((chunk[1] as u32 * 255) / a) as u8;
-            chunk[2] = ((chunk[2] as u32 * 255) / a) as u8;
-        }
-    }
+    let data = pixmap.take();
 
     ffi::RasterResult { width: w, height: h, data, error: String::new() }
 }

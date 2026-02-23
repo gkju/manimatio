@@ -1,3 +1,19 @@
+//! ESDT/SDF generation for alpha and RGBA inputs.
+//!
+//! Color convention summary:
+//! - `compute_rgba_esdt*` expects **premultiplied RGBA8** input (e.g. from `resvg/tiny-skia`).
+//! - Internally, RGB is converted into a **straight-color spill field** using only trusted
+//!   near-solid seeds, then propagated across transparent space.
+//! - `compute_rgba_esdt` returns RGBA8 where:
+//!     - RGB = straight propagated color field
+//!     - A   = SDF remapped to 0..255 using `spread`
+//! - `compute_rgba_esdt_f32` returns packed `[R, G, B, signed_distance]` per pixel where:
+//!     - RGB = straight propagated color field in 0..1
+//!     - D   = signed distance in pixels (positive outside, negative inside)
+//!
+//! Note: The returned RGB is for SDF reconstruction/morphing, not directly a display-ready
+//! premultiplied image. If compositing into a premultiplied pipeline, premultiply at the end.
+
 pub type Float = f32; // | f64
 
 pub struct EsdtCoreResult {
@@ -212,7 +228,93 @@ fn esdt1d(mask: &mut [bool], xs: &mut [Float], ys: &mut [Float], offset: usize, 
     }
 }
 
-// Propagates colors outward to completely transparent pixels utilizing calculated offsets.
+#[inline]
+fn copy_rgb_at(rgb: &[u8], idx: usize, out: &mut [u8], out_i4: usize) {
+    let s3 = idx * 3;
+    out[out_i4 + 0] = rgb[s3 + 0];
+    out[out_i4 + 1] = rgb[s3 + 1];
+    out[out_i4 + 2] = rgb[s3 + 2];
+}
+
+// Fill color field from seeded pixels only (separable nearest fill: rows, then cols).
+fn fill_seed_field(width: usize, height: usize, seed_rgb: &mut [u8], seed_mask: &mut [u8]) {
+    for y in 0..height {
+        fill_seed_field_1d(seed_rgb, seed_mask, y * width, 1, width);
+    }
+    for x in 0..width {
+        fill_seed_field_1d(seed_rgb, seed_mask, x, width, height);
+    }
+}
+
+fn fill_seed_field_1d(
+    seed_rgb: &mut [u8],
+    seed_mask: &mut [u8],
+    offset: usize,
+    stride: usize,
+    length: usize,
+) {
+    let mut s: isize = -1;
+
+    for i in 0..length {
+        let idx = offset + stride * i;
+        if seed_mask[idx] != 0 {
+            if s < (i as isize - 1) {
+                if s == -1 {
+                    // Fill left/start gap with this seed.
+                    fill_seed_span(seed_rgb, seed_mask, offset, stride, i, 0);
+                } else {
+                    // Split the gap at midpoint between previous seed and this seed.
+                    let su = s as usize;
+                    let m = (su + i) / 2;
+                    fill_seed_span(seed_rgb, seed_mask, offset, stride, su, m);
+                    fill_seed_span(seed_rgb, seed_mask, offset, stride, i, m);
+                }
+            }
+            s = i as isize;
+        }
+    }
+
+    // Fill trailing gap to the end.
+    if s >= 0 && (s as usize) < length - 1 {
+        fill_seed_span(seed_rgb, seed_mask, offset, stride, s as usize, length - 1);
+    }
+}
+
+fn fill_seed_span(
+    seed_rgb: &mut [u8],
+    seed_mask: &mut [u8],
+    offset: usize,
+    stride: usize,
+    from: usize,
+    to: usize,
+) {
+    let src = offset + stride * from;
+    let src3 = src * 3;
+    let r = seed_rgb[src3 + 0];
+    let g = seed_rgb[src3 + 1];
+    let b = seed_rgb[src3 + 2];
+
+    if from <= to {
+        for i in from..=to {
+            let idx = offset + stride * i;
+            let d3 = idx * 3;
+            seed_rgb[d3 + 0] = r;
+            seed_rgb[d3 + 1] = g;
+            seed_rgb[d3 + 2] = b;
+            seed_mask[idx] = 255;
+        }
+    } else {
+        for i in (to..=from).rev() {
+            let idx = offset + stride * i;
+            let d3 = idx * 3;
+            seed_rgb[d3 + 0] = r;
+            seed_rgb[d3 + 1] = g;
+            seed_rgb[d3 + 2] = b;
+            seed_mask[idx] = 255;
+        }
+    }
+}
+
 pub fn propagate_rgba_colors(
     width: usize,
     height: usize,
@@ -223,39 +325,66 @@ pub fn propagate_rgba_colors(
     let np = width * height;
     let mut out_rgba = vec![0u8; np * 4];
 
+    // Strict Acko-style seeding for premultiplied renderer output:
+    // only near-solid pixels are trusted as color sources.
+    const SEED_ALPHA_MIN: u8 = 250;
+
+    // Seed field (RGB only) + occupancy mask used for separable fill.
+    let mut seed_rgb = vec![0u8; np * 3];
+    let mut seed_mask = vec![0u8; np];
+
+    // Pass 1a: seed ONLY from trusted near-solid pixels.
+    let mut any_seed = false;
+    for i in 0..np {
+        let i4 = i * 4;
+        if rgba[i4 + 3] >= SEED_ALPHA_MIN {
+            let d3 = i * 3;
+            seed_rgb[d3 + 0] = rgba[i4 + 0];
+            seed_rgb[d3 + 1] = rgba[i4 + 1];
+            seed_rgb[d3 + 2] = rgba[i4 + 2];
+            seed_mask[i] = 255;
+            any_seed = true;
+        }
+    }
+
+    // Preserve original raster alpha here (caller may overwrite with SDF alpha later).
+    for i in 0..np {
+        out_rgba[i * 4 + 3] = rgba[i * 4 + 3];
+    }
+
+    // No trusted seeds at all (e.g. fully translucent-only content).
+    if !any_seed {
+        return out_rgba; // RGB stays zero
+    }
+
+    // Pass 1b: fill/spill seed colors across the whole image (Acko-style separable fill).
+    fill_seed_field(width, height, &mut seed_rgb, &mut seed_mask);
+
+    // Pass 2: map each pixel to its nearest boundary location using ESDT and sample the filled field.
     for y in 0..height {
         for x in 0..width {
             let i = y * width + x;
             let i4 = i * 4;
 
-            let alpha = rgba[i4 + 3];
-
-            if alpha > 0 {
-                // Interior or anti-aliased edge: keep original colors
-                out_rgba[i4] = rgba[i4];
+            // Preserve exact trusted seed colors for seed pixels (avoids unnecessary remap on interiors).
+            if rgba[i4 + 3] >= SEED_ALPHA_MIN {
+                out_rgba[i4 + 0] = rgba[i4 + 0];
                 out_rgba[i4 + 1] = rgba[i4 + 1];
                 out_rgba[i4 + 2] = rgba[i4 + 2];
-                out_rgba[i4 + 3] = rgba[i4 + 3];
-            } else {
-                // Exterior: map backwards utilizing the nearest edge's displacement vector
-                let dx = xo[i];
-                let dy = yo[i];
-
-                let src_x = (x as Float + dx).round() as isize;
-                let src_y = (y as Float + dy).round() as isize;
-
-                let src_x = src_x.clamp(0, width as isize - 1) as usize;
-                let src_y = src_y.clamp(0, height as isize - 1) as usize;
-
-                let src_i4 = (src_y * width + src_x) * 4;
-
-                out_rgba[i4] = rgba[src_i4];
-                out_rgba[i4 + 1] = rgba[src_i4 + 1];
-                out_rgba[i4 + 2] = rgba[src_i4 + 2];
-                out_rgba[i4 + 3] = 0;
+                continue;
             }
+
+            let sx = (x as Float + xo[i]).round() as isize;
+            let sy = (y as Float + yo[i]).round() as isize;
+
+            let sx = sx.clamp(0, width as isize - 1) as usize;
+            let sy = sy.clamp(0, height as isize - 1) as usize;
+            let si = sy * width + sx;
+
+            copy_rgb_at(&seed_rgb, si, &mut out_rgba, i4);
         }
     }
+
     out_rgba
 }
 

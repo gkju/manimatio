@@ -136,21 +136,25 @@ int main() {
             float b_B = sdf_color_B.data[p4 + 2];
             float d_B = sdf_color_B.data[p4 + 3];
             
-            // Blend the physical distance map
-            float d_blend = d_A * (1.0f - smooth_t) + d_B * smooth_t;
-            float alpha = 0.5f - (d_blend / crisp_aa_width);
-            alpha = std::max(0.0f, std::min(1.0f, alpha)); 
+            float aA = std::clamp(0.5f - (d_A / crisp_aa_width), 0.0f, 1.0f);
+            float aB = std::clamp(0.5f - (d_B / crisp_aa_width), 0.0f, 1.0f);
 
-            // Blend the RGB colors cleanly 
+            float d_blend = d_A * (1.0f - smooth_t) + d_B * smooth_t;
+            float alpha = std::clamp(0.5f - (d_blend / crisp_aa_width), 0.0f, 1.0f);
+
             float r_blend = r_A * (1.0f - smooth_t) + r_B * smooth_t;
             float g_blend = g_A * (1.0f - smooth_t) + g_B * smooth_t;
             float b_blend = b_A * (1.0f - smooth_t) + b_B * smooth_t;
 
             // Write interleaved 8-bit RGBA out
-            frame_buffer_color[p4 + 0] = static_cast<uint8_t>(std::clamp(r_blend * 255.0f, 0.0f, 255.0f));
-            frame_buffer_color[p4 + 1] = static_cast<uint8_t>(std::clamp(g_blend * 255.0f, 0.0f, 255.0f));
-            frame_buffer_color[p4 + 2] = static_cast<uint8_t>(std::clamp(b_blend * 255.0f, 0.0f, 255.0f));
-            frame_buffer_color[p4 + 3] = static_cast<uint8_t>(alpha * 255.0f);
+            float rp = r_blend * alpha;
+            float gp = g_blend * alpha;
+            float bp = b_blend * alpha;
+
+            frame_buffer_color[p4 + 0] = static_cast<uint8_t>(std::clamp(rp * 255.0f, 0.0f, 255.0f));
+            frame_buffer_color[p4 + 1] = static_cast<uint8_t>(std::clamp(gp * 255.0f, 0.0f, 255.0f));
+            frame_buffer_color[p4 + 2] = static_cast<uint8_t>(std::clamp(bp * 255.0f, 0.0f, 255.0f));
+            frame_buffer_color[p4 + 3] = static_cast<uint8_t>(std::clamp(alpha * 255.0f, 0.0f, 255.0f));
         }
 
         std::ostringstream ss;
