@@ -5,7 +5,11 @@ edition = "2024"
 
 [lib]
 name = "manimatio_rust_lib"
-crate-type = ["staticlib", "rlib"]
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[[bin]]
+name = "manimatio_rust_bin"
+path = "src/main.rs"
 
 [dependencies]
 cxx = "1"

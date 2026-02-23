@@ -20,6 +20,19 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # -----------------------
+# Linker setup
+# -----------------------
+find_program(MOLD_PATH mold)
+if(MOLD_PATH)
+    add_link_options("-fuse-ld=mold")
+else()
+    find_program(LLD_PATH ld.lld)
+    if(LLD_PATH)
+        add_link_options("-fuse-ld=lld")
+    endif()
+endif()
+
+# -----------------------
 # Rust sources
 # -----------------------
 include(FetchContent)

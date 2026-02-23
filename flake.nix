@@ -17,7 +17,7 @@
           default = pkgs.mkShell.override { inherit stdenv; } {
             packages = with pkgs; [
               cmake ninja
-              stdenv.cc lld llvm clang-tools
+              stdenv.cc lld llvm clang-tools mold
               rustc cargo
               git pkg-config
               python3

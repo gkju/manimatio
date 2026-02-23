@@ -42,8 +42,21 @@ pub mod ffi {
     extern "Rust" {
         fn render_typst_to_svg(code: &str) -> RenderResult;
         fn render_typst_sequence(template_code: &str, params_json: &str) -> SvgSequenceResult;
+        
+        // Rasterization into plain straight (not premultiplied) RGBA bytes
         fn rasterize_svg(svg: &str, scale: f32, grid_size: u32, force_w: u32, force_h: u32) -> RasterResult;
+        
+        // Typst -> SDF
         fn render_typst_to_sdf_f32(code: &str, scale: f32, grid_size: u32, force_w: u32, force_h: u32) -> RasterResultF32;
+
+        // Typst -> RGBA+SDF = [R(float), G(float), B(float), SDF_Distance(float), ...]
+        fn render_typst_to_rgba_esdt(code: &str, scale: f32, grid_size: u32, force_w: u32, force_h: u32, spread: f32) -> RasterResult;
+        fn render_typst_to_rgba_esdt_f32(code: &str, scale: f32, grid_size: u32, force_w: u32, force_h: u32) -> RasterResultF32;
+
+        // ESDT fns
+        fn compute_esdt_alpha(width: u32, height: u32, alpha: &[u8]) -> RasterResultF32;
+        fn compute_esdt_rgba8(width: u32, height: u32, rgba: &[u8], spread: f32) -> RasterResult;
+        fn compute_esdt_rgba32f(width: u32, height: u32, rgba: &[u8]) -> RasterResultF32;
     }
 }
 
@@ -92,7 +105,20 @@ pub fn rasterize_svg(svg: &str, scale: f32, grid_size: u32, force_w: u32, force_
     let transform = tiny_skia::Transform::from_scale(scale, scale).post_translate(dx, dy);
     resvg::render(&tree, transform, &mut pixmap.as_mut());
 
-    ffi::RasterResult { width: w, height: h, data: pixmap.take(), error: String::new() }
+    let mut data = pixmap.take();
+    
+    // Un-premultiply the alpha channel locally so the straight RGBA is maintained 
+    // This allows exact sampling for anti-aliased edge colors when creating an RGBA ESDT.
+    for chunk in data.chunks_exact_mut(4) {
+        let a = chunk[3] as u32;
+        if a > 0 && a < 255 {
+            chunk[0] = ((chunk[0] as u32 * 255) / a) as u8;
+            chunk[1] = ((chunk[1] as u32 * 255) / a) as u8;
+            chunk[2] = ((chunk[2] as u32 * 255) / a) as u8;
+        }
+    }
+
+    ffi::RasterResult { width: w, height: h, data, error: String::new() }
 }
 
 pub fn render_typst_to_sdf_f32(code: &str, scale: f32, grid_size: u32, force_w: u32, force_h: u32) -> ffi::RasterResultF32 {
@@ -125,6 +151,59 @@ pub fn render_typst_to_sdf_f32(code: &str, scale: f32, grid_size: u32, force_w: 
         error: String::new() 
     }
 }
+
+pub fn render_typst_to_rgba_esdt(code: &str, scale: f32, grid_size: u32, force_w: u32, force_h: u32, spread: f32) -> ffi::RasterResult {
+    let svg_res = render_typst_to_svg(code);
+    if !svg_res.error.is_empty() {
+        return ffi::RasterResult { width: 0, height: 0, data: vec![], error: svg_res.error };
+    }
+
+    let raster_res = rasterize_svg(&svg_res.svg, scale, grid_size, force_w, force_h);
+    if !raster_res.error.is_empty() {
+        return ffi::RasterResult { width: 0, height: 0, data: vec![], error: raster_res.error };
+    }
+
+    compute_esdt_rgba8(raster_res.width, raster_res.height, &raster_res.data, spread)
+}
+
+pub fn render_typst_to_rgba_esdt_f32(code: &str, scale: f32, grid_size: u32, force_w: u32, force_h: u32) -> ffi::RasterResultF32 {
+    let svg_res = render_typst_to_svg(code);
+    if !svg_res.error.is_empty() {
+        return ffi::RasterResultF32 { width: 0, height: 0, data: vec![], error: svg_res.error };
+    }
+
+    let raster_res = rasterize_svg(&svg_res.svg, scale, grid_size, force_w, force_h);
+    if !raster_res.error.is_empty() {
+        return ffi::RasterResultF32 { width: 0, height: 0, data: vec![], error: raster_res.error };
+    }
+
+    compute_esdt_rgba32f(raster_res.width, raster_res.height, &raster_res.data)
+}
+
+pub fn compute_esdt_alpha(width: u32, height: u32, alpha: &[u8]) -> ffi::RasterResultF32 {
+    if alpha.len() != (width * height) as usize {
+        return ffi::RasterResultF32 { width: 0, height: 0, data: vec![], error: "Alpha buffer size mismatch".into() };
+    }
+    let sdf = esdt::compute_sdf(width as usize, height as usize, alpha);
+    ffi::RasterResultF32 { width, height, data: sdf, error: String::new() }
+}
+
+pub fn compute_esdt_rgba8(width: u32, height: u32, rgba: &[u8], spread: f32) -> ffi::RasterResult {
+    if rgba.len() != (width * height * 4) as usize {
+        return ffi::RasterResult { width: 0, height: 0, data: vec![], error: "RGBA buffer size mismatch".into() };
+    }
+    let data = esdt::compute_rgba_esdt(width as usize, height as usize, rgba, spread);
+    ffi::RasterResult { width, height, data, error: String::new() }
+}
+
+pub fn compute_esdt_rgba32f(width: u32, height: u32, rgba: &[u8]) -> ffi::RasterResultF32 {
+    if rgba.len() != (width * height * 4) as usize {
+        return ffi::RasterResultF32 { width: 0, height: 0, data: vec![], error: "RGBA buffer size mismatch".into() };
+    }
+    let data = esdt::compute_rgba_esdt_f32(width as usize, height as usize, rgba);
+    ffi::RasterResultF32 { width, height, data, error: String::new() }
+}
+
 
 struct DummyProgress;
 impl Progress for DummyProgress {

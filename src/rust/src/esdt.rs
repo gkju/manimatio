@@ -1,6 +1,12 @@
 pub type Float = f32; // | f64
 
-pub fn compute_sdf(width: usize, height: usize, data: &[u8]) -> Vec<Float> {
+pub struct EsdtCoreResult {
+    pub sdf: Vec<Float>,
+    pub xo: Vec<Float>,
+    pub yo: Vec<Float>,
+}
+
+pub fn compute_esdt_core(width: usize, height: usize, data: &[u8]) -> EsdtCoreResult {
     let np = width * height;
     let mut xo = vec![0.0 as Float; np];
     let mut yo = vec![0.0 as Float; np];
@@ -135,7 +141,12 @@ pub fn compute_sdf(width: usize, height: usize, data: &[u8]) -> Vec<Float> {
         let inner_d = ((xi[i] * xi[i] + yi[i] * yi[i]).sqrt() - 0.5).max(0.0);
         out[i] = if outer_d >= inner_d { outer_d } else { -inner_d };
     }
-    out
+    
+    EsdtCoreResult { sdf: out, xo, yo }
+}
+
+pub fn compute_sdf(width: usize, height: usize, data: &[u8]) -> Vec<Float> {
+    compute_esdt_core(width, height, data).sdf
 }
 
 fn esdt(mask: &mut [bool], xs: &mut [Float], ys: &mut [Float], w: usize, h: usize) {
@@ -199,4 +210,100 @@ fn esdt1d(mask: &mut [bool], xs: &mut [Float], ys: &mut [Float], offset: usize, 
 
         if r != q { mask[o] = false; }
     }
+}
+
+// Propagates colors outward to completely transparent pixels utilizing calculated offsets.
+pub fn propagate_rgba_colors(
+    width: usize,
+    height: usize,
+    rgba: &[u8],
+    xo: &[Float],
+    yo: &[Float],
+) -> Vec<u8> {
+    let np = width * height;
+    let mut out_rgba = vec![0u8; np * 4];
+
+    for y in 0..height {
+        for x in 0..width {
+            let i = y * width + x;
+            let i4 = i * 4;
+
+            let alpha = rgba[i4 + 3];
+
+            if alpha > 0 {
+                // Interior or anti-aliased edge: keep original colors
+                out_rgba[i4] = rgba[i4];
+                out_rgba[i4 + 1] = rgba[i4 + 1];
+                out_rgba[i4 + 2] = rgba[i4 + 2];
+                out_rgba[i4 + 3] = rgba[i4 + 3];
+            } else {
+                // Exterior: map backwards utilizing the nearest edge's displacement vector
+                let dx = xo[i];
+                let dy = yo[i];
+
+                let src_x = (x as Float + dx).round() as isize;
+                let src_y = (y as Float + dy).round() as isize;
+
+                let src_x = src_x.clamp(0, width as isize - 1) as usize;
+                let src_y = src_y.clamp(0, height as isize - 1) as usize;
+
+                let src_i4 = (src_y * width + src_x) * 4;
+
+                out_rgba[i4] = rgba[src_i4];
+                out_rgba[i4 + 1] = rgba[src_i4 + 1];
+                out_rgba[i4 + 2] = rgba[src_i4 + 2];
+                out_rgba[i4 + 3] = 0;
+            }
+        }
+    }
+    out_rgba
+}
+
+pub fn compute_rgba_esdt(
+    width: usize,
+    height: usize,
+    rgba: &[u8],
+    spread: Float,
+) -> Vec<u8> {
+    let np = width * height;
+    let mut alpha_chan = vec![0u8; np];
+    for i in 0..np {
+        alpha_chan[i] = rgba[i * 4 + 3];
+    }
+
+    let core = compute_esdt_core(width, height, &alpha_chan);
+    let mut out_rgba = propagate_rgba_colors(width, height, rgba, &core.xo, &core.yo);
+
+    for i in 0..np {
+        let dist = core.sdf[i];
+        let norm = 0.5 - 0.5 * (dist / spread);
+        let a = (norm * 255.0).clamp(0.0, 255.0) as u8;
+        out_rgba[i * 4 + 3] = a;
+    }
+
+    out_rgba
+}
+
+pub fn compute_rgba_esdt_f32(
+    width: usize,
+    height: usize,
+    rgba: &[u8],
+) -> Vec<f32> {
+    let np = width * height;
+    let mut alpha_chan = vec![0u8; np];
+    for i in 0..np {
+        alpha_chan[i] = rgba[i * 4 + 3];
+    }
+
+    let core = compute_esdt_core(width, height, &alpha_chan);
+    let propagated = propagate_rgba_colors(width, height, rgba, &core.xo, &core.yo);
+
+    let mut out = Vec::with_capacity(np * 4);
+    for i in 0..np {
+        out.push(propagated[i * 4] as f32 / 255.0);
+        out.push(propagated[i * 4 + 1] as f32 / 255.0);
+        out.push(propagated[i * 4 + 2] as f32 / 255.0);
+        out.push(core.sdf[i]);
+    }
+    out
 }
