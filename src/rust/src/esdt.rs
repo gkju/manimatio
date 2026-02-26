@@ -165,18 +165,82 @@ pub fn compute_sdf(width: usize, height: usize, data: &[u8]) -> Vec<Float> {
     compute_esdt_core(width, height, data).sdf
 }
 
-fn esdt(mask: &mut [bool], xs: &mut [Float], ys: &mut [Float], w: usize, h: usize) {
-    for x in 0..w { esdt1d(mask, ys, xs, x, w, h); }
-    for y in 0..h { esdt1d(mask, xs, ys, y * w, 1, w); }
+#[derive(Debug)]
+struct Esdt1dScratch {
+    f: Vec<Float>,
+    z: Vec<Float>,     // length + 1
+    b: Vec<Float>,
+    t: Vec<Float>,
+    v: Vec<usize>,
 }
 
-fn esdt1d(mask: &mut [bool], xs: &mut [Float], ys: &mut [Float], offset: usize, stride: usize, length: usize) {
+impl Esdt1dScratch {
+    fn new(max_len: usize) -> Self {
+        Self {
+            f: vec![0.0; max_len],
+            z: vec![0.0; max_len + 1],
+            b: vec![0.0; max_len],
+            t: vec![0.0; max_len],
+            v: vec![0; max_len],
+        }
+    }
+
+    #[inline]
+    fn ensure_capacity(&mut self, max_len: usize) {
+        if self.f.len() < max_len {
+            self.f.resize(max_len, 0.0);
+            self.b.resize(max_len, 0.0);
+            self.t.resize(max_len, 0.0);
+            self.v.resize(max_len, 0);
+        }
+        if self.z.len() < max_len + 1 {
+            self.z.resize(max_len + 1, 0.0);
+        }
+    }
+}
+
+fn esdt(mask: &mut [bool], xs: &mut [Float], ys: &mut [Float], w: usize, h: usize) {
+    let mut scratch = Esdt1dScratch::new(w.max(h));
+    esdt_with_scratch(mask, xs, ys, w, h, &mut scratch);
+}
+
+fn esdt_with_scratch(
+    mask: &mut [bool],
+    xs: &mut [Float],
+    ys: &mut [Float],
+    w: usize,
+    h: usize,
+    scratch: &mut Esdt1dScratch,
+) {
+    scratch.ensure_capacity(w.max(h));
+
+    for x in 0..w {
+        esdt1d(mask, ys, xs, x, w, h, scratch);
+    }
+    for y in 0..h {
+        esdt1d(mask, xs, ys, y * w, 1, w, scratch);
+    }
+}
+
+fn esdt1d(
+    mask: &mut [bool],
+    xs: &mut [Float],
+    ys: &mut [Float],
+    offset: usize,
+    stride: usize,
+    length: usize,
+    scratch: &mut Esdt1dScratch,
+) {
     let inf = 1e10 as Float;
-    let mut f = vec![0.0; length];
-    let mut z = vec![0.0; length + 1];
-    let mut b = vec![0.0; length];
-    let mut t = vec![0.0; length];
-    let mut v = vec![0; length];
+
+    // Reuse only the prefix we need for this line
+    let (f, z, b, t, v) = (
+        &mut scratch.f[..length],
+        &mut scratch.z[..(length + 1)],
+        &mut scratch.b[..length],
+        &mut scratch.t[..length],
+        &mut scratch.v[..length],
+    );
 
     v[0] = 0;
     b[0] = xs[offset];
@@ -185,12 +249,13 @@ fn esdt1d(mask: &mut [bool], xs: &mut [Float], ys: &mut [Float], offset: usize, 
     z[1] = inf;
     f[0] = if mask[offset] { inf } else { ys[offset] * ys[offset] };
 
-    let mut k = 0;
+    let mut k = 0usize;
     for q in 1..length {
         let o = offset + q * stride;
-        let dx = xs[o]; let dy = ys[o];
+        let dx = xs[o];
+        let dy = ys[o];
         let fq = if mask[o] { inf } else { dy * dy };
-        
+
         f[q] = fq;
         t[q] = dy;
 
@@ -204,8 +269,13 @@ fn esdt1d(mask: &mut [bool], xs: &mut [Float], ys: &mut [Float], offset: usize, 
             let rs = b[r];
             let r2 = rs * rs;
             s = (fq - f[r] + q2 - r2) / (qs - rs) / 2.0;
-            if s <= z[k] && k > 0 { k -= 1; } else { break; }
+            if s <= z[k] && k > 0 {
+                k -= 1;
+            } else {
+                break;
+            }
         }
+
         k += 1;
         v[k] = q;
         z[k] = s;
@@ -214,7 +284,10 @@ fn esdt1d(mask: &mut [bool], xs: &mut [Float], ys: &mut [Float], offset: usize, 
 
     k = 0;
     for q in 0..length {
-        while z[k + 1] < (q as Float) { k += 1; }
+        while z[k + 1] < (q as Float) {
+            k += 1;
+        }
+
         let r = v[k];
         let rs = b[r];
         let dy = t[r];
@@ -224,7 +297,9 @@ fn esdt1d(mask: &mut [bool], xs: &mut [Float], ys: &mut [Float], offset: usize, 
         xs[o] = rq;
         ys[o] = dy;
 
-        if r != q { mask[o] = false; }
+        if r != q {
+            mask[o] = false;
+        }
     }
 }
 
