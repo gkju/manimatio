@@ -11,26 +11,40 @@
       forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f system);
     in {
       devShells = forAllSystems (system:
-        let pkgs = import nixpkgs { inherit system; };
-        stdenv = pkgs.clangStdenv;
+        let 
+          pkgs = import nixpkgs { inherit system; };
+          stdenv = pkgs.clangStdenv;
+
+          # Base packages
+          commonPackages = with pkgs; [
+            cmake ninja
+            stdenv.cc lld llvm clang-tools
+            rustc cargo
+            git pkg-config
+            python3
+            just
+            autoconf automake libtool autoconf-archive m4 
+            gperf flex bison gettext
+            openssl
+          ];
+
+          # Linux-only packages
+          linuxPackages = with pkgs; lib.optionals stdenv.isLinux [
+            mold
+            util-linux
+            mesa libGL
+            xorg.libX11 xorg.libXcursor xorg.libXinerama xorg.libXi
+          ];
+
+          # macOS-only packages
+          darwinPackages = with pkgs; lib.optionals stdenv.isDarwin [
+            darwin.apple_sdk.frameworks.Cocoa
+            darwin.apple_sdk.frameworks.OpenGL
+          ];
+
         in {
           default = pkgs.mkShell.override { inherit stdenv; } {
-            packages = with pkgs; [
-              cmake ninja
-              stdenv.cc lld llvm clang-tools mold
-              rustc cargo
-              git pkg-config
-              python3
-              just
-
-              autoconf automake libtool autoconf-archive m4 
-              gperf flex bison gettext
-
-              util-linux
-              mesa libGL
-              libx11 libxcursor libxinerama libxi
-              openssl
-            ];
+            packages = commonPackages ++ linuxPackages ++ darwinPackages;
 
             shellHook = ''
               export VCPKG_ROOT="$PWD/vcpkg"
@@ -39,10 +53,16 @@
               export PATH=$VCPKG_ROOT:$PATH
               
               export VCPKG_FORCE_SYSTEM_BINARIES=1
-              export STDCXX_PATH="${pkgs.stdenv.cc.cc.lib}/lib"
-              export LD_LIBRARY_PATH="$STDCXX_PATH:$LD_LIBRARY_PATH"
-              export NIX_LDFLAGS="-L$STDCXX_PATH $NIX_LDFLAGS"
+              
               mkdir -p "$VCPKG_DOWNLOADS" "$VCPKG_DEFAULT_BINARY_CACHE"
+              
+              # Isolate the standard library hack to Linux only
+              ${pkgs.lib.optionalString pkgs.stdenv.isLinux ''
+                export STDCXX_PATH="${pkgs.stdenv.cc.cc.lib}/lib"
+                export LD_LIBRARY_PATH="$STDCXX_PATH:$LD_LIBRARY_PATH"
+                export NIX_LDFLAGS="-L$STDCXX_PATH $NIX_LDFLAGS"
+              ''}
+
               if [ ! -f "$VCPKG_ROOT/bootstrap-vcpkg.sh" ]; then
                 echo "ERROR: $VCPKG_ROOT/bootstrap-vcpkg.sh not found."
                 echo "Did you forget to checkout the vcpkg submodule?"
