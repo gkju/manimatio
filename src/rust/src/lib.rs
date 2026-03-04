@@ -43,32 +43,32 @@ pub mod ffi {
         fn render_typst_to_svg(code: &str) -> RenderResult;
         fn render_typst_sequence(template_code: &str, params_json: &str) -> SvgSequenceResult;
         
-        /// Rasterize an SVG to an RGBA8 pixel buffer using `resvg` + `tiny-skia`.
+        //// Rasterize an SVG to an RGBA8 pixel buffer using `resvg` + `tiny-skia`.
         ///
         /// Output format:
         /// - `data`: RGBA8 with **premultiplied alpha**
-        /// - `width`, `height`: snapped to `grid_size` unless overridden by `force_w/force_h`
+        /// - `width`, `height`: tightly fit to the SVG's intrinsic size at the given `dpi`
         ///
-        /// The SVG is scaled by `scale` and centered in the output canvas.
-        /// This is useful for consistent alignment in morphing/compositing pipelines.
-        fn rasterize_svg(svg: &str, scale: f32, grid_size: u32, force_w: u32, force_h: u32) -> RasterResult;
+        /// Standard SVG coordinates assume 96 pixels per inch.
+        fn rasterize_svg(svg: &str, dpi: f32) -> RasterResult;
         
-        // Typst -> SDF
-        fn render_typst_to_sdf_f32(code: &str, scale: f32, grid_size: u32, force_w: u32, force_h: u32) -> RasterResultF32;
+        /// Compile Typst -> SVG -> SDF
+        fn render_typst_to_sdf_f32(code: &str, dpi: f32) -> RasterResultF32;
 
-        // Typst -> packed float RGBD (not RGBA):
-        // [R, G, B, signed_distance, ...]
-        // RGB is straight propagated color; distance is in pixel units.
-        fn render_typst_to_rgba_esdt(code: &str, scale: f32, grid_size: u32, force_w: u32, force_h: u32, spread: f32) -> RasterResult;
         /// Compile Typst -> SVG -> raster -> color-propagated ESDT.
         ///
-        /// Returns packed float data in `[R, G, B, D]` layout per pixel:
-        /// - `R,G,B` are **straight propagated colors** in `[0,1]`
-        /// - `D` is signed distance in pixel units (`<0` inside, `>0` outside)
+        /// Output format is 8-bit RGBA per pixel:
+        /// - `R,G,B` are **straight propagated colors** in `[0, 255]`
+        /// - `A` is normalized SDF alpha encoded with `spread`
         ///
         /// Input rasterization is premultiplied RGBA (from tiny-skia), but AA-edge RGB is ignored
         /// during color seeding to avoid premultiplication artifacts.
-        fn render_typst_to_rgba_esdt_f32(code: &str, scale: f32, grid_size: u32, force_w: u32, force_h: u32) -> RasterResultF32;
+        fn render_typst_to_rgba_esdt(code: &str, dpi: f32, spread: f32) -> RasterResult;
+        
+        /// Same as `render_typst_to_rgba_esdt` above, but returns packed float data in `[R, G, B, D]` layout:
+        /// - `R,G,B` are straight propagated colors in `[0, 1]`
+        /// - `D` is signed distance in pixel units (`<0` inside, `>0` outside)
+        fn render_typst_to_rgba_esdt_f32(code: &str, dpi: f32) -> RasterResultF32;
 
         // ESDT fns
         fn compute_esdt_alpha(width: u32, height: u32, alpha: &[u8]) -> RasterResultF32;
@@ -85,7 +85,7 @@ pub mod ffi {
     }
 }
 
-pub fn rasterize_svg(svg: &str, scale: f32, grid_size: u32, force_w: u32, force_h: u32) -> ffi::RasterResult {
+pub fn rasterize_svg(svg: &str, dpi: f32) -> ffi::RasterResult {
     let opt = usvg::Options::default();
     
     let tree = match usvg::Tree::from_str(svg, &opt) {
@@ -98,18 +98,11 @@ pub fn rasterize_svg(svg: &str, scale: f32, grid_size: u32, force_w: u32, force_
         }
     };
 
-    let intrinsic_w = tree.size().width() * scale;
-    let intrinsic_h = tree.size().height() * scale;
-    
-    let mut w = intrinsic_w.ceil() as u32;
-    let mut h = intrinsic_h.ceil() as u32;
+    // Standard SVG coordinates assume 96 pixels per inch
+    let scale = dpi / 96.0;
 
-    // Apply strict bounds or snap to grid composition size
-    if force_w > 0 { w = force_w; }
-    else if grid_size > 0 { w = ((w + grid_size - 1) / grid_size) * grid_size; }
-
-    if force_h > 0 { h = force_h; }
-    else if grid_size > 0 { h = ((h + grid_size - 1) / grid_size) * grid_size; }
+    let w = (tree.size().width() * scale).ceil() as u32;
+    let h = (tree.size().height() * scale).ceil() as u32;
     
     if w == 0 || h == 0 {
         return ffi::RasterResult {
@@ -120,14 +113,13 @@ pub fn rasterize_svg(svg: &str, scale: f32, grid_size: u32, force_w: u32, force_
 
     let mut pixmap = match tiny_skia::Pixmap::new(w, h) {
         Some(p) => p,
-        None => return ffi::RasterResult { width: 0, height: 0, data: vec![], error: "Failed to allocate pixel map".to_string() }
+        None => return ffi::RasterResult { 
+            width: 0, height: 0, data: vec![], 
+            error: "Failed to allocate pixel map".to_string() 
+        }
     };
 
-    // Center the SVG on the canvas (crucial for grid layouts and morphing alignment)
-    let dx = (w as f32 - intrinsic_w) / 2.0;
-    let dy = (h as f32 - intrinsic_h) / 2.0;
-    
-    let transform = tiny_skia::Transform::from_scale(scale, scale).post_translate(dx, dy);
+    let transform = tiny_skia::Transform::from_scale(scale, scale);
     resvg::render(&tree, transform, &mut pixmap.as_mut());
 
     let data = pixmap.take();
@@ -135,13 +127,13 @@ pub fn rasterize_svg(svg: &str, scale: f32, grid_size: u32, force_w: u32, force_
     ffi::RasterResult { width: w, height: h, data, error: String::new() }
 }
 
-pub fn render_typst_to_sdf_f32(code: &str, scale: f32, grid_size: u32, force_w: u32, force_h: u32) -> ffi::RasterResultF32 {
+pub fn render_typst_to_sdf_f32(code: &str, dpi: f32) -> ffi::RasterResultF32 {
     let svg_res = render_typst_to_svg(code);
     if !svg_res.error.is_empty() {
         return ffi::RasterResultF32 { width: 0, height: 0, data: vec![], error: svg_res.error };
     }
 
-    let raster_res = rasterize_svg(&svg_res.svg, scale, grid_size, force_w, force_h);
+    let raster_res = rasterize_svg(&svg_res.svg, dpi);
     if !raster_res.error.is_empty() { 
         return ffi::RasterResultF32 { width: 0, height: 0, data: vec![], error: raster_res.error };
     }
@@ -166,13 +158,13 @@ pub fn render_typst_to_sdf_f32(code: &str, scale: f32, grid_size: u32, force_w: 
     }
 }
 
-pub fn render_typst_to_rgba_esdt(code: &str, scale: f32, grid_size: u32, force_w: u32, force_h: u32, spread: f32) -> ffi::RasterResult {
+pub fn render_typst_to_rgba_esdt(code: &str, dpi: f32, spread: f32) -> ffi::RasterResult {
     let svg_res = render_typst_to_svg(code);
     if !svg_res.error.is_empty() {
         return ffi::RasterResult { width: 0, height: 0, data: vec![], error: svg_res.error };
     }
 
-    let raster_res = rasterize_svg(&svg_res.svg, scale, grid_size, force_w, force_h);
+    let raster_res = rasterize_svg(&svg_res.svg, dpi);
     if !raster_res.error.is_empty() {
         return ffi::RasterResult { width: 0, height: 0, data: vec![], error: raster_res.error };
     }
@@ -180,13 +172,13 @@ pub fn render_typst_to_rgba_esdt(code: &str, scale: f32, grid_size: u32, force_w
     compute_esdt_rgba8(raster_res.width, raster_res.height, &raster_res.data, spread)
 }
 
-pub fn render_typst_to_rgba_esdt_f32(code: &str, scale: f32, grid_size: u32, force_w: u32, force_h: u32) -> ffi::RasterResultF32 {
+pub fn render_typst_to_rgba_esdt_f32(code: &str, dpi: f32) -> ffi::RasterResultF32 {
     let svg_res = render_typst_to_svg(code);
     if !svg_res.error.is_empty() {
         return ffi::RasterResultF32 { width: 0, height: 0, data: vec![], error: svg_res.error };
     }
 
-    let raster_res = rasterize_svg(&svg_res.svg, scale, grid_size, force_w, force_h);
+    let raster_res = rasterize_svg(&svg_res.svg, dpi);
     if !raster_res.error.is_empty() {
         return ffi::RasterResultF32 { width: 0, height: 0, data: vec![], error: raster_res.error };
     }
