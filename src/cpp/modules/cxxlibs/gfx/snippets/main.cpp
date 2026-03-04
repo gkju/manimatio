@@ -161,7 +161,7 @@ int main() {
 #set page(width: auto, height: auto, margin: 40pt)
 #cetz.canvas({
   import cetz.draw: *
-  circle((0,0), radius: 2, fill: rgb("F74C00"), stroke: none)
+  circle((0,0), radius: 1, fill: rgb("F74C00"), stroke: none)
 })
 )";
         
@@ -170,7 +170,7 @@ int main() {
 #set page(width: auto, height: auto, margin: 40pt)
 #cetz.canvas({
   import cetz.draw: *
-  rect((-2, -2), (2, 2), fill: rgb("00599C"), stroke: none)
+  rect((-1, -1), (1, 1), fill: rgb("00599C"), stroke: none)
 })
 )";
 
