@@ -15,10 +15,19 @@
           pkgs = import nixpkgs { inherit system; };
           stdenv = pkgs.clangStdenv;
 
+	        clangScanDepsWrapper = pkgs.writeShellScriptBin "clang-scan-deps" ''
+            # Dynamically extract the hidden includes at RUNTIME so Ninja can't strip them
+            INCLUDES=$(clang++ -E -x c++ - -v 2>&1 </dev/null | awk '/#include <...>/ {flag=1; next} /End of search/ {flag=0} flag {printf "-isystem %s ", $1}')
+            
+            # Forward everything to the real scanner
+            exec ${pkgs.clang-tools}/bin/clang-scan-deps "$@" $INCLUDES
+          '';
+
           # Base packages
           commonPackages = with pkgs; [
             cmake ninja
             stdenv.cc lld llvm clang-tools
+            clangScanDepsWrapper
             rustc cargo
             git pkg-config
             python3
@@ -37,11 +46,9 @@
           ];
 
           # macOS-only packages
-          darwinPackages = with pkgs; lib.optionals stdenv.isDarwin [
-            darwin.apple_sdk.frameworks.Cocoa
-            darwin.apple_sdk.frameworks.OpenGL
+	        darwinPackages = with pkgs; lib.optionals stdenv.isDarwin [
+            apple-sdk
           ];
-
         in {
           default = pkgs.mkShell.override { inherit stdenv; } {
             packages = commonPackages ++ linuxPackages ++ darwinPackages;
@@ -68,12 +75,16 @@
                 echo "Did you forget to checkout the vcpkg submodule?"
                 exit 1
               fi
-              
+
+
               if [ ! -f "$VCPKG_ROOT/vcpkg" ]; then
                 echo "Bootstrapping vcpkg submodule..."
                 chmod +x "$VCPKG_ROOT/bootstrap-vcpkg.sh"
                 "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
               fi
+
+              mkdir -p .direnv
+              ln -sf "${pkgs.clang-tools}/bin/clangd" .direnv/clangd
 
               PRESET_BUILD_DIR="build/nix-dev"
 

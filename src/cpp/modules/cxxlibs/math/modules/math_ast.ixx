@@ -59,4 +59,4 @@ public:
   }
 };
 
-} // namespace math_ast
+} // namespace math

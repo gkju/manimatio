@@ -1,10 +1,7 @@
 cmake_minimum_required(VERSION 3.28)
-
-find_program(CLANG_SCAN_DEPS_PATH clang-scan-deps)
-if(CLANG_SCAN_DEPS_PATH)
-    set(CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS ${CLANG_SCAN_DEPS_PATH})
+if(DEFINED ENV{WRAPPED_CLANG_SCAN_DEPS})
+    set(CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS "$ENV{WRAPPED_CLANG_SCAN_DEPS}" CACHE FILEPATH "Force Nix wrapper" FORCE)
 endif()
-
 # -----------------------
 # Project setup
 # -----------------------
