@@ -80,7 +80,7 @@ enum class IntrinsicOpType {
   Negate
 };
 
-template <typename R, typename... Args> 
+template <typename R, typename... Args>
 class IntrinsicNode : public ComputationNode<R> {
   IntrinsicOpType op_type;
   std::tuple<std::shared_ptr<ComputationNode<Args>>...> args;
@@ -88,39 +88,43 @@ class IntrinsicNode : public ComputationNode<R> {
 public:
   IntrinsicNode(IntrinsicOpType op, std::shared_ptr<ComputationNode<Args>>... a)
       : op_type(op), args(std::move(a)...) {
-    std::apply([this](auto &...child) { (child->add_dependent(this), ...); }, args);
+    std::apply([this](auto &...child) { (child->add_dependent(this), ...); },
+               args);
   }
 
   ~IntrinsicNode() override {
-    std::apply([this](auto &...child) { (child->remove_dependent(this), ...); }, args);
+    std::apply([this](auto &...child) { (child->remove_dependent(this), ...); },
+               args);
   }
 
   IntrinsicOpType get_op_type() const { return op_type; }
 
   R compute() const override {
+    using namespace std; // Resolve ops to std by default
     if constexpr (sizeof...(Args) == 1) {
+
       auto x = std::get<0>(args)->evaluate();
       switch (op_type) {
       case IntrinsicOpType::Sin:
-        return std::sin(x);
+        return sin(x);
       case IntrinsicOpType::Cos:
-        return std::cos(x);
+        return cos(x);
       case IntrinsicOpType::Tan:
-        return std::tan(x);
+        return tan(x);
       case IntrinsicOpType::Asin:
-        return std::asin(x);
+        return asin(x);
       case IntrinsicOpType::Acos:
-        return std::acos(x);
+        return acos(x);
       case IntrinsicOpType::Atan:
-        return std::atan(x);
+        return atan(x);
       case IntrinsicOpType::Exp:
-        return std::exp(x);
+        return exp(x);
       case IntrinsicOpType::Log:
-        return std::log(x);
+        return log(x);
       case IntrinsicOpType::Sqrt:
-        return std::sqrt(x);
+        return sqrt(x);
       case IntrinsicOpType::Abs:
-        return std::abs(x);
+        return abs(x);
       case IntrinsicOpType::Negate:
         return -x;
       default:
@@ -139,13 +143,13 @@ public:
       case IntrinsicOpType::Div:
         return x / y;
       case IntrinsicOpType::Atan2:
-        return std::atan2(x, y);
+        return atan2(x, y);
       case IntrinsicOpType::Pow:
-        return std::pow(x, y);
+        return pow(x, y);
       case IntrinsicOpType::Min:
-        return std::min(x, y);
+        return min(x, y);
       case IntrinsicOpType::Max:
-        return std::max(x, y);
+        return max(x, y);
       default:
         break;
       }

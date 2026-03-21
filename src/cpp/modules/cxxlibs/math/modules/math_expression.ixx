@@ -21,10 +21,11 @@ Expr<T> make_unary_builtin(IntrinsicOpType op, const Expr<T> &e) {
   return Expr<T>(std::make_shared<IntrinsicNode<T, T>>(op, e.get_node()));
 }
 
-template <typename T1, typename T2>
-auto make_binary_builtin(IntrinsicOpType op, const Expr<T1> &a, const Expr<T2> &b) {
-  using R = decltype(std::declval<T1>() * std::declval<T2>());
-  return Expr<R>(std::make_shared<IntrinsicNode<R, T1, T2>>(op, a.get_node(), b.get_node()));
+template <typename R, typename T1, typename T2>
+Expr<R> make_binary_builtin(IntrinsicOpType op, const Expr<T1> &a,
+                            const Expr<T2> &b) {
+  return Expr<R>(std::make_shared<IntrinsicNode<R, T1, T2>>(op, a.get_node(),
+                                                            b.get_node()));
 }
 
 template <typename T> class Expr {
@@ -41,29 +42,29 @@ public:
   std::shared_ptr<ComputationNode<T>> get_node() const { return node; }
 
   friend Expr operator+(const Expr &l, const Expr &r) {
-    return make_binary_builtin(IntrinsicOpType::Add, l, r);
+    return make_binary_builtin<T>(IntrinsicOpType::Add, l, r);
   }
 
   friend Expr operator-(const Expr &l, const Expr &r) {
-    return make_binary_builtin(IntrinsicOpType::Sub, l, r);
+    return make_binary_builtin<T>(IntrinsicOpType::Sub, l, r);
   }
 
   friend Expr operator*(const Expr &l, const Expr &r) {
-    return make_binary_builtin(IntrinsicOpType::Mul, l, r);
+    return make_binary_builtin<T>(IntrinsicOpType::Mul, l, r);
   }
 
   friend Expr operator/(const Expr &l, const Expr &r) {
-    return make_binary_builtin(IntrinsicOpType::Div, l, r);
+    return make_binary_builtin<T>(IntrinsicOpType::Div, l, r);
   }
 
-  template <typename U>
-  friend auto operator*(const Expr &l, const Expr<U> &r) {
-    return make_binary_builtin(IntrinsicOpType::Mul, l, r);
+  template <typename U> friend auto operator*(const Expr &l, const Expr<U> &r) {
+    using R = decltype(std::declval<T>() * std::declval<U>());
+    return make_binary_builtin<R>(IntrinsicOpType::Mul, l, r);
   }
 
-  template <typename U>
-  friend auto operator+(const Expr &l, const Expr<U> &r) {
-    return make_binary_builtin(IntrinsicOpType::Add, l, r);
+  template <typename U> friend auto operator+(const Expr &l, const Expr<U> &r) {
+    using R = decltype(std::declval<T>() + std::declval<U>());
+    return make_binary_builtin<R>(IntrinsicOpType::Add, l, r);
   }
 };
 

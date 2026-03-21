@@ -51,49 +51,53 @@ template <typename F, typename... Args> auto apply(F &&f, const Args &...args) {
 }
 
 template <typename T> Expr<T> sin(const Expr<T> &e) {
-  return make_unary_builtin(IntrinsicOpType::Sin, e);
+  return make_unary_builtin<T>(IntrinsicOpType::Sin, e);
 }
 template <typename T> Expr<T> cos(const Expr<T> &e) {
-  return make_unary_builtin(IntrinsicOpType::Cos, e);
+  return make_unary_builtin<T>(IntrinsicOpType::Cos, e);
 }
 template <typename T> Expr<T> tan(const Expr<T> &e) {
-  return make_unary_builtin(IntrinsicOpType::Tan, e);
+  return make_unary_builtin<T>(IntrinsicOpType::Tan, e);
 }
 template <typename T> Expr<T> atan2(const Expr<T> &a, const Expr<T> &b) {
-  return make_binary_builtin(IntrinsicOpType::Atan2, a, b);
-}
-template <typename T> Expr<T> pow(const Expr<T> &a, const Expr<T> &b) {
-  return make_binary_builtin(IntrinsicOpType::Pow, a, b);
-}
-template <typename T> Expr<T> operator-(const Expr<T> &e) {
-  return make_unary_builtin(IntrinsicOpType::Negate, e);
-}
-template <typename T> Expr<T> asin(const Expr<T> &e) {
-  return make_unary_builtin(IntrinsicOpType::Asin, e);
-}
-template <typename T> Expr<T> acos(const Expr<T> &e) {
-  return make_unary_builtin(IntrinsicOpType::Acos, e);
-}
-template <typename T> Expr<T> atan(const Expr<T> &e) {
-  return make_unary_builtin(IntrinsicOpType::Atan, e);
-}
-template <typename T> Expr<T> exp(const Expr<T> &e) {
-  return make_unary_builtin(IntrinsicOpType::Exp, e);
-}
-template <typename T> Expr<T> log(const Expr<T> &e) {
-  return make_unary_builtin(IntrinsicOpType::Log, e);
-}
-template <typename T> Expr<T> sqrt(const Expr<T> &e) {
-  return make_unary_builtin(IntrinsicOpType::Sqrt, e);
-}
-template <typename T> Expr<T> abs(const Expr<T> &e) {
-  return make_unary_builtin(IntrinsicOpType::Abs, e);
-}
-template <typename T> Expr<T> min(const Expr<T> &a, const Expr<T> &b) {
-  return make_binary_builtin(IntrinsicOpType::Min, a, b);
-}
-template <typename T> Expr<T> max(const Expr<T> &a, const Expr<T> &b) {
-  return make_binary_builtin(IntrinsicOpType::Max, a, b);
+  return make_binary_builtin<T>(IntrinsicOpType::Atan2, a, b);
 }
 
+template <typename T> Expr<T> pow(const Expr<T> &a, const Expr<T> &b) {
+  return make_binary_builtin<T>(IntrinsicOpType::Pow, a, b);
 }
+
+template <typename T> Expr<T> min(const Expr<T> &a, const Expr<T> &b) {
+  return make_binary_builtin<T>(IntrinsicOpType::Min, a, b);
+}
+
+template <typename T> Expr<T> max(const Expr<T> &a, const Expr<T> &b) {
+  return make_binary_builtin<T>(IntrinsicOpType::Max, a, b);
+}
+
+template <typename T> Expr<T> operator-(const Expr<T> &e) {
+  return make_unary_builtin<T>(IntrinsicOpType::Negate, e);
+}
+template <typename T> Expr<T> asin(const Expr<T> &e) {
+  return make_unary_builtin<T>(IntrinsicOpType::Asin, e);
+}
+template <typename T> Expr<T> acos(const Expr<T> &e) {
+  return make_unary_builtin<T>(IntrinsicOpType::Acos, e);
+}
+template <typename T> Expr<T> atan(const Expr<T> &e) {
+  return make_unary_builtin<T>(IntrinsicOpType::Atan, e);
+}
+template <typename T> Expr<T> exp(const Expr<T> &e) {
+  return make_unary_builtin<T>(IntrinsicOpType::Exp, e);
+}
+template <typename T> Expr<T> log(const Expr<T> &e) {
+  return make_unary_builtin<T>(IntrinsicOpType::Log, e);
+}
+template <typename T> Expr<T> sqrt(const Expr<T> &e) {
+  return make_unary_builtin<T>(IntrinsicOpType::Sqrt, e);
+}
+template <typename T> Expr<T> abs(const Expr<T> &e) {
+  return make_unary_builtin<T>(IntrinsicOpType::Abs, e);
+}
+
+} // namespace math
