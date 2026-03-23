@@ -58,6 +58,7 @@
               export VCPKG_DOWNLOADS="$PWD/.vcpkg/downloads"
               export VCPKG_DEFAULT_BINARY_CACHE="$PWD/.vcpkg/bincache"
               export PATH=$VCPKG_ROOT:$PATH
+              export WRAPPED_CLANG_SCAN_DEPS="${clangScanDepsWrapper}/bin/clang-scan-deps"
               
               export VCPKG_FORCE_SYSTEM_BINARIES=1
               
