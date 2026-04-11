@@ -1,7 +1,8 @@
 {
-    "name": "manimatio",
-    "version": "0.0.1",
-    "dependencies": [
-        "openimageio"
-    ]
+  "name": "manimatio",
+  "version": "0.0.1",
+  "dependencies": [
+    "openimageio",
+    "stduuid"
+  ]
 }

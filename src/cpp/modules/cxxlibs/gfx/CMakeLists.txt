@@ -5,8 +5,8 @@ include(${CMAKE_SOURCE_DIR}/cmake/AddCxxTests.cmake)
 
 
 add_cxx_module_library_auto(cxxlib_gfx ${CMAKE_CURRENT_LIST_DIR})
-set_property(GLOBAL APPEND PROPERTY AUTO_CXXLIB_TARGETS cxxlib_gfx)
 
-target_link_libraries(cxxlib_gfx PUBLIC OpenImageIO::OpenImageIO rust_bridge cxxlib_math)
+target_link_libraries(cxxlibs PUBLIC OpenImageIO::OpenImageIO rust_bridge)
+
 add_cxx_snippets(cxxlib_gfx ${CMAKE_CURRENT_LIST_DIR})
 add_cxx_tests(cxxlib_gfx ${CMAKE_CURRENT_LIST_DIR})

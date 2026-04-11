@@ -7,6 +7,7 @@ endif()
 # -----------------------
 project(manimatio LANGUAGES C CXX)
 find_package(OpenImageIO CONFIG REQUIRED)
+find_package(stduuid CONFIG REQUIRED)
 
 option(ENABLE_LTO "Enable cross-language link-time optimization (LTO)" OFF)
 option(ENABLE_CUDA_EXT "Enable CUDA extension" OFF)
@@ -19,14 +20,16 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # -----------------------
 # Linker setup
 # -----------------------
-find_program(MOLD_PATH mold)
-if(MOLD_PATH)
-    add_link_options("-fuse-ld=mold")
-else()
-    find_program(LLD_PATH ld.lld)
-    if(LLD_PATH)
-        add_link_options("-fuse-ld=lld")
-    endif()
+if(NOT WIN32)
+  find_program(MOLD_PATH mold)
+  if(MOLD_PATH)
+      add_link_options("-fuse-ld=mold")
+  else()
+      find_program(LLD_PATH ld.lld)
+      if(LLD_PATH)
+          add_link_options("-fuse-ld=lld")
+      endif()
+  endif()
 endif()
 
 # -----------------------

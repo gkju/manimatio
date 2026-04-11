@@ -3,7 +3,7 @@ function(add_cxx_module_library_auto target dir)
     message(FATAL_ERROR "C++ modules require CMake >= 3.28")
   endif()
 
-  add_library(${target} STATIC)
+  get_property(_unified GLOBAL PROPERTY CXXLIBS_UNIFIED_TARGET)
 
   file(GLOB_RECURSE MOD_IFACES CONFIGURE_DEPENDS
     "${dir}/modules/*.ixx"
@@ -12,7 +12,7 @@ function(add_cxx_module_library_auto target dir)
   )
 
   if(MOD_IFACES)
-    target_sources(${target}
+    target_sources(${_unified}
       PUBLIC
         FILE_SET cxx_modules TYPE CXX_MODULES FILES
           ${MOD_IFACES}
@@ -25,12 +25,13 @@ function(add_cxx_module_library_auto target dir)
     "${dir}/src/*.cxx"
   )
   if(NORMAL_SOURCES)
-    target_sources(${target} PRIVATE ${NORMAL_SOURCES})
+    target_sources(${_unified} PRIVATE ${NORMAL_SOURCES})
   endif()
 
   if(IS_DIRECTORY "${dir}/include")
-    target_include_directories(${target} PUBLIC "${dir}/include")
+    target_include_directories(${_unified} PUBLIC "${dir}/include")
   endif()
 
-  target_compile_features(${target} PUBLIC cxx_std_23)
+  # Add per module name aliases
+  add_library(${target} ALIAS ${_unified})
 endfunction()

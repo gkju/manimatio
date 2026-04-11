@@ -10,3 +10,4 @@
 cmake-build-debug/
 src/rust/target/
 frames/
+.claude
