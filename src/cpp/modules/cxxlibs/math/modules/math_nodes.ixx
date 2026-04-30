@@ -7,10 +7,12 @@ module;
 #include <tuple>
 #include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
 
 export module math:nodes;
 import :ast;
+import :node_desc;
 
 export namespace math {
 
@@ -56,28 +58,6 @@ public:
   explicit VarNode(T val) : ValueNode<T>(val) {}
 
   NodeType get_node_type() const override { return NodeType::Var; }
-};
-
-enum class IntrinsicOpType {
-  Add,
-  Sub,
-  Mul,
-  Div,
-  Sin,
-  Cos,
-  Tan,
-  Asin,
-  Acos,
-  Atan,
-  Atan2,
-  Exp,
-  Log,
-  Sqrt,
-  Abs,
-  Pow,
-  Min,
-  Max,
-  Negate
 };
 
 template <typename R, typename... Args>

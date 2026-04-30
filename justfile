@@ -43,3 +43,13 @@ reconfigure:
 # Clean the build directory
 clean:
     rm -rf {{build_dir}}
+
+modules-refresh:
+      ninja -C {{build_dir}} build.ninja
+      ninja -C {{build_dir}} CMakeFiles/cxxlibs.dir/CXX.dd
+
+modules-build:
+    cmake --build --preset {{preset}} --target cxxlibs
+
+watch-modules:
+    watchexec --watch src/cpp/modules/cxxlibs --exts ixx,cppm,mpp --debounce 500ms --restart -- just modules-build

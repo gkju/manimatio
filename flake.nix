@@ -35,6 +35,7 @@
             autoconf automake libtool autoconf-archive m4 
             gperf flex bison gettext
             openssl
+            watchexec
           ];
 
           # Linux-only packages
